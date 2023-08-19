@@ -1,0 +1,18 @@
+* tribe
+
+Tribe is a calendar/contacts/notes sharing server for small, mostly trusted groups,
+like school-aged families, polycules and co-parenting groups.
+
+** technical
+
+- an instance manages a single group, this isn't intended as SaaS
+- group can have members, which have more or less the same rights as each other
+- group can have non-members, which are first-class invitees etc, but don't have rights
+
+- CalDAV for calendars
+- CardDAV for contacts
+- WebDAV for shared file storage
+    - notion like editor for these files, maybe just for markdown
+- Bot framework for ingest via chat
+    - Telegram, SMS, Signal, WhatsApp?
+    

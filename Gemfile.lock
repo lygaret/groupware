@@ -1,0 +1,95 @@
+GIT
+  remote: https://github.com/guilleiguaran/nancy.git
+  revision: 0ee50b82cad7ef22a44a78ae8fc1a9d25e0d4f16
+  specs:
+    nancy (0.6.0)
+      mustermann
+      rack
+      rack-session
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    concurrent-ruby (1.2.2)
+    debug (1.8.0)
+      irb (>= 1.5.0)
+      reline (>= 0.3.1)
+    diff-lcs (1.5.0)
+    dry-auto_inject (1.0.1)
+      dry-core (~> 1.0)
+      zeitwerk (~> 2.6)
+    dry-configurable (1.1.0)
+      dry-core (~> 1.0, < 2)
+      zeitwerk (~> 2.6)
+    dry-core (1.0.1)
+      concurrent-ruby (~> 1.0)
+      zeitwerk (~> 2.6)
+    dry-events (1.0.1)
+      concurrent-ruby (~> 1.0)
+      dry-core (~> 1.0, < 2)
+    dry-inflector (1.0.0)
+    dry-monitor (1.0.1)
+      dry-configurable (~> 1.0, < 2)
+      dry-core (~> 1.0, < 2)
+      dry-events (~> 1.0, < 2)
+    dry-system (1.0.1)
+      dry-auto_inject (~> 1.0, < 2)
+      dry-configurable (~> 1.0, < 2)
+      dry-core (~> 1.0, < 2)
+      dry-inflector (~> 1.0, < 2)
+    io-console (0.6.0)
+    irb (1.7.4)
+      reline (>= 0.3.6)
+    mustermann (3.0.0)
+      ruby2_keywords (~> 0.0.1)
+    nokogiri (1.15.4-x86_64-linux)
+      racc (~> 1.4)
+    racc (1.7.1)
+    rack (3.0.8)
+    rack-session (2.0.0)
+      rack (>= 3.0.0)
+    rackup (2.1.0)
+      rack (>= 3)
+      webrick (~> 1.8)
+    reline (0.3.7)
+      io-console (~> 0.5)
+    rspec (3.12.0)
+      rspec-core (~> 3.12.0)
+      rspec-expectations (~> 3.12.0)
+      rspec-mocks (~> 3.12.0)
+    rspec-core (3.12.2)
+      rspec-support (~> 3.12.0)
+    rspec-expectations (3.12.3)
+      diff-lcs (>= 1.2.0, < 2.0)
+      rspec-support (~> 3.12.0)
+    rspec-mocks (3.12.6)
+      diff-lcs (>= 1.2.0, < 2.0)
+      rspec-support (~> 3.12.0)
+    rspec-support (3.12.1)
+    ruby2_keywords (0.0.5)
+    sequel (5.71.0)
+    sqlite3 (1.6.3-x86_64-linux)
+    webrick (1.8.1)
+    zeitwerk (2.6.11)
+
+PLATFORMS
+  x86_64-linux
+
+DEPENDENCIES
+  debug
+  dry-events
+  dry-monitor
+  dry-system
+  nancy!
+  nokogiri
+  rack
+  rackup
+  rspec (~> 3.12)
+  sequel
+  sqlite3
+
+RUBY VERSION
+   ruby 3.2.2p53
+
+BUNDLED WITH
+   2.4.10
