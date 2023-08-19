@@ -1,0 +1,25 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require_relative '../system/app'
+App::Container.finalize!
+
+options = {}
+OptionParser.new do |opts|
+    opts.banner = "Usage: migrate [options]"
+
+    opts.on("-r", "--rollback", "do a rollback") do |v|
+        options[:rollback] = v
+    end
+
+    opts.on("-t", "--target INTEGER", Integer, "the target version of the database") do |v|
+        options[:target] = v
+    end
+end.parse!
+
+puts "TARGET: #{options[:target] || 'nil'}"
+
+# because we need specific database setup, 
+# we can't use the `sequel -m` cli for migrations
+
+App::Container['db.migrator'].run! version: options[:target]

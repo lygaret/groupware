@@ -15,6 +15,7 @@ GEM
       irb (>= 1.5.0)
       reline (>= 0.3.1)
     diff-lcs (1.5.0)
+    dotenv (2.8.1)
     dry-auto_inject (1.0.1)
       dry-core (~> 1.0)
       zeitwerk (~> 2.6)
@@ -51,6 +52,7 @@ GEM
     rackup (2.1.0)
       rack (>= 3)
       webrick (~> 1.8)
+    rake (13.0.6)
     reline (0.3.7)
       io-console (~> 0.5)
     rspec (3.12.0)
@@ -77,6 +79,7 @@ PLATFORMS
 
 DEPENDENCIES
   debug
+  dotenv
   dry-events
   dry-monitor
   dry-system
@@ -84,9 +87,11 @@ DEPENDENCIES
   nokogiri
   rack
   rackup
+  rake
   rspec (~> 3.12)
   sequel
   sqlite3
+  zeitwerk
 
 RUBY VERSION
    ruby 3.2.2p53
