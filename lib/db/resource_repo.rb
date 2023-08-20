@@ -2,23 +2,19 @@ module Db
     class ResourceRepo
         include App::Import["db.connection"]
 
-        def resources             = connection[:resources]
-        def resources_descendants = connection[:resources].join_table(:inner, :resources_closure, id: :id)
-        def resources_ancestors   = connection[:resources].join_table(:inner, :resources_closure, root: :id)
+        def resources = connection[:resources]
 
-        RESOURCES_ID_COL       = Sequel[:resources][:id]
-        RESOURCES_TREE_ID_COL  = Sequel[:resources_closure][:id]
+        COL_ID        = Sequel[:resource_paths][:id]
+        COL_FULLPATH  = Sequel[:resource_paths][:fullpath]
 
-        def roots 
-            resources_descendants.where(root: 0, depth: 1)
+        def for_path(path)
+            resources.where(id:
+                resources
+                    .select(COL_ID)
+                    .join(:resource_paths, id: :id)
+                    .where(COL_FULLPATH => path&.chomp("/"))
+            )
         end
 
-        def ancestors_of(id:)
-            resources_ancestors.where(RESOURCES_TREE_ID_COL => id).where{depth>0}.select_all(:resources).select_append('depth')
-        end
-
-        def descendants_of(id:)
-            resources_descendants.where(root: id).where{depth>0}
-        end
     end
 end

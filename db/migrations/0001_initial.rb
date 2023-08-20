@@ -1,26 +1,33 @@
 Sequel.migration do
     up do
-        create_table :resources, strict: true do
-            primary_key :id
-            foreign_key :parent_id, :resources, allow_null: true
-
-            text :path
-        end
-
-        add_index :resources, :parent_id
-
         run <<~SQL
-            CREATE VIRTUAL TABLE resources_closure 
-                USING transitive_closure(tablename='resources', idcolumn='id', parentcolumn='parent_id');
-        SQL
+            CREATE TABLE resources (
+                id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                pid     INTEGER NULL REFERENCES resources(id),
+                path    TEXT NOT NULL,
+                is_coll INTEGER NOT NULL DEFAULT 0,
+                content BLOB,
+                mime    TEXT
+            );
 
-        run <<~SQL
-            INSERT INTO resources (id, path) VALUES (0, "");
+            CREATE INDEX resources_pid_idx ON resources(pid);
+
+            CREATE VIEW resource_paths (id, fullpath) AS
+                WITH RECURSIVE _paths(id, fullpath) AS (
+                    SELECT resources.id, '/' || resources.path 
+                    FROM   resources
+                    WHERE  resources.pid IS NULL
+                    UNION
+                    SELECT resources.id, _paths.fullpath || '/' || resources.path
+                    FROM   resources, _paths
+                    WHERE  resources.pid = _paths.id
+                )
+                SELECT id, fullpath FROM _paths;
         SQL
     end
 
     down do
-        drop_table :resources_closure;
+        drop_view  :resource_paths
         drop_table :resources
     end
 end

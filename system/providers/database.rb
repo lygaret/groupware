@@ -1,6 +1,7 @@
 App::Container.register_provider(:database) do
     prepare do
         require "sequel"
+        require "logger"
     end
 
     start do
@@ -13,7 +14,7 @@ App::Container.register_provider(:database) do
             conn.enable_load_extension false
         end
 
-        db = Sequel.connect(ENV['DATABASE_URL'], after_connect: after_connect)
+        db = Sequel.connect(ENV['DATABASE_URL'], after_connect: after_connect, logger: Logger.new('./log/db.log'))
         register('db.connection', db)
     end
 
