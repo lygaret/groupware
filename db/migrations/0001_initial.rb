@@ -3,7 +3,7 @@ Sequel.migration do
         run <<~SQL
             CREATE TABLE resources (
                 id      INTEGER PRIMARY KEY AUTOINCREMENT,
-                pid     INTEGER NULL REFERENCES resources(id),
+                pid     INTEGER NULL REFERENCES resources(id) ON DELETE CASCADE,
                 path    TEXT NOT NULL,
                 is_coll INTEGER NOT NULL DEFAULT 0,
                 content BLOB,
@@ -14,7 +14,7 @@ Sequel.migration do
 
             CREATE VIEW resource_paths (id, fullpath) AS
                 WITH RECURSIVE _paths(id, fullpath) AS (
-                    SELECT resources.id, '/' || resources.path 
+                    SELECT resources.id, '/' || resources.path
                     FROM   resources
                     WHERE  resources.pid IS NULL
                     UNION
@@ -23,6 +23,12 @@ Sequel.migration do
                     WHERE  resources.pid = _paths.id
                 )
                 SELECT id, fullpath FROM _paths;
+
+            CREATE VIEW resource_ephemeral_root (id, pid, path, is_coll, content, mime) AS
+                WITH _root(id, pid, path, is_coll, content, mime) AS (
+                    VALUES(NULL, NULL, '', TRUE, NULL, NULL)
+                )
+                SELECT * from _root;
         SQL
     end
 

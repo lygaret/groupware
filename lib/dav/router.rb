@@ -42,9 +42,37 @@ module Dav
             halt 200
         end
 
+        def mkcol *args
+            # mkcol w/ body is unsupported
+            halt 415 if request.content_length
+            halt 415 if request.media_type
+
+            # conflict if already exists
+            halt 405 unless resource_repo.for_path(request.path_info).empty?
+
+            # fetch the parent collection
+            # conflict if the parent doesn't exist (or isn't a collection)
+            name, parent_coll = resource_repo.parent_for_path(request.path_info)
+            parent            = parent_coll.first
+
+            halt 409 if     parent.nil?
+            halt 409 unless parent[:is_coll]
+
+            # otherwise, insert!
+            resource_repo.resources.insert(pid: parent[:id], path: name, is_coll: true)
+            halt 201
+        end
+
+        def head *args
+            get *args # sets headers and throws
+            nil       # but don't include a body in head requests
+        end
+
         def get *args
             resource = resource_repo.for_path(request.path_info).first
+
             halt 404 if resource.nil?
+            halt 202 if resource[:is_coll]
 
             if resource[:mime]
                 response.headers.merge!("Content-Type" => resource[:mime])
@@ -53,9 +81,8 @@ module Dav
             resource[:content]
         end
 
-        def head *args
-            get *args # sets headers and throws
-            nil       # but don't include a body in head requests
+        def post *args
+            halt 405 # method not supported
         end
 
         def put *args
@@ -86,36 +113,11 @@ module Dav
             end
         end
 
-        def post *args
-            [200, {"Content-Type": "text/plain"}, ["Hi! from post"]]
-        end
-
         def delete *args
-        end
+            res_id = resource_repo.for_path(request.path_info).select(:id).get(:id)
+            halt 404 if res_id.nil?
 
-        def mkcol *args
-            # mkcol w/ body is unsupported
-            halt 415 if request.content_length
-            halt 415 if request.media_type
-
-            # conflict if already exists
-            halt 409 unless resource_repo.for_path(request.path_info).empty?
-
-            # parse out the parent
-            req_path, parent_path = parse_paths(request.path_info)
-
-            # special case the top level (it's not an actual collection)
-            if parent_path == ""
-                resource_repo.resources.insert(pid: nil, path: req_path, is_coll: true)
-                halt 201
-            end
-
-            parent = resource_repo.for_path(parent_path).select(:id, :is_coll).first
-
-            halt 409 if     parent.nil?      # conflect if the parent doesn't exist
-            halt 409 unless parent[:is_coll] # conflect if the parent isn't a collection
-
-            resource_repo.resources.insert(pid: parent[:id], path: req_path, is_coll: true)
+            resource_repo.resources.where(id: res_id).delete
             halt 201
         end
 
