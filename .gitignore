@@ -13,7 +13,7 @@
 /log/
 
 /db/ext/
-/db/*.db
+/db/*.db*
 
 # Used by dotenv library to load environment variables.
 # .env

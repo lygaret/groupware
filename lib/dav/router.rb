@@ -4,12 +4,7 @@ module Dav
     class Router < Http::Router
 
         include App::Import['db.resource_repo']
-
-        def call!(...)
-            resource_repo.connection.transaction do
-                super(...)
-            end
-        end
+        include App::Import['logger']
 
     # 9.3 MKCOL Method
     # MKCOL creates a new collection resource at the location specified by the Request-URI. If the Request-URI is already mapped to a resource, then the MKCOL MUST fail. 
@@ -38,6 +33,15 @@ module Dav
     #     define any, the server is likely not to support any given body type).
     # - 507 (Insufficient Storage) - The resource does not have sufficient space to record the state of the resource after the execution of this method.
 
+        def call!(...)
+            super(...)
+        rescue Sequel::DatabaseError => ex
+            raise unless ex.cause.is_a? SQLite3::BusyException
+
+            logger.error "RETRYING, BUSY!"
+            retry
+        end
+
         def parse_paths(path_info)
             parts = path_info.split("/")
             [parts.pop, parts.join("/")]
@@ -53,20 +57,24 @@ module Dav
             halt 415 if request.content_length
             halt 415 if request.media_type
 
-            # conflict if already exists
-            halt 405 unless resource_repo.for_path(request.path_info).empty?
+            resource_repo.connection.transaction do
 
-            # fetch the parent collection
-            # conflict if the parent doesn't exist (or isn't a collection)
-            parent_path, name = split_path request.path_info
-            parent            = resource_repo.for_path(parent_path).select(:id, :is_coll).first
+                # conflict if already exists
+                halt 405 unless resource_repo.for_path(request.path_info).empty?
 
-            halt 409 if     parent.nil?
-            halt 409 unless parent[:is_coll]
+                # fetch the parent collection
+                # conflict if the parent doesn't exist (or isn't a collection)
+                parent_path, name = split_path request.path_info
+                parent            = resource_repo.for_path(parent_path).select(:id, :is_coll).first
 
-            # otherwise, insert!
-            resource_repo.resources.insert(pid: parent[:id], path: name, is_coll: true)
-            halt 201
+                halt 409 if     parent.nil?
+                halt 409 unless parent[:is_coll]
+
+                # otherwise, insert!
+                resource_repo.resources.insert(pid: parent[:id], path: name, is_coll: true)
+                halt 201
+
+            end
         end
 
         def head *args
@@ -94,30 +102,34 @@ module Dav
         end
 
         def put_update resource_id
-            resource_repo.resources
-                .where(id: resource_id)
-                .update(mime: request.content_type, content: request.body)
-
-            halt 204 # no content
-        end
-
-        def put_insert
-            # fetch the parent collection
-            # conflict if the parent doesn't exist (or isn't a collection)
-            parent_path, name = split_path request.path_info
-            parent            = resource_repo.for_path(parent_path).select(:id, :is_coll).first
-            
-            # conflict if the parent isn't a collection?
-            halt 404 if parent.nil?
-            halt 409 unless parent[:is_coll]
-
             # read the body from the request
             len    = Integer(request.content_length)
             buffer = request.body.read(len)
             mime   = request.content_type
 
-            resource_repo.resources.insert(pid:  parent[:id], path: name, mime: mime, content: buffer)
-            halt 201 # created
+            resource_repo.resources.where(id: resource_id).update(mime: mime, content: buffer)
+            halt 204 # no content
+        end
+
+        def put_insert
+            resource_repo.connection.transaction do
+                # fetch the parent collection
+                # conflict if the parent doesn't exist (or isn't a collection)
+                parent_path, name = split_path request.path_info
+                parent            = resource_repo.for_path(parent_path).select(:id, :is_coll).first
+                
+                # conflict if the parent isn't a collection?
+                halt 404 if parent.nil?
+                halt 409 unless parent[:is_coll]
+
+                # read the body from the request
+                len    = Integer(request.content_length)
+                buffer = request.body.read(len)
+                mime   = request.content_type
+
+                resource_repo.resources.insert(pid:  parent[:id], path: name, mime: mime, content: buffer)
+                halt 201 # created
+            end
         end
 
         def post(*args) = halt 405 # method not supported
@@ -133,35 +145,35 @@ module Dav
             halt 400 unless destination.delete_prefix!(request.base_url)
             halt 400 unless destination.delete_prefix!(request.script_name)
 
-            # fetch the parent collection of the destination
-            # conflict if the parent doesn't exist (or isn't a collection)
+            resource_repo.connection.transaction mode: :exclusive do
 
-            parent_path, name = split_path destination
-            parent            = resource_repo.for_path(parent_path).select(:id, :is_coll).first
+                # fetch the parent collection of the destination
+                # conflict if the parent doesn't exist (or isn't a collection)
 
-            halt 409 if     parent.nil?
-            halt 409 unless parent[:is_coll]
+                parent_path, name = split_path destination
+                parent            = resource_repo.for_path(parent_path).select(:id, :is_coll).first
 
-            # overwrititng
+                halt 409 if     parent.nil?
+                halt 409 unless parent[:is_coll]
 
-            extant = resource_repo.for_path(destination).select(:id).first
-            if !extant.nil?
-                overwrite = request.get_header("HTTP_OVERWRITE")&.downcase
-                halt 412 unless overwrite == "t"
+                # overwrititng
 
-                resource_repo.resources.where(id: extant[:id]).delete
+                extant = resource_repo.for_path(destination).select(:id).first
+                if !extant.nil?
+                    overwrite = request.get_header("HTTP_OVERWRITE")&.downcase
+                    halt 412 unless overwrite == "t"
+
+                    resource_repo.resources.where(id: extant[:id]).delete
+                end
+
+                # now we can copy
+
+                resource_repo.clone_tree source[:id], parent[:id], name
+                halt (extant.nil? ? 201 : 204)
             end
-
-            # now we can copy
-
-            resource_repo.clone_tree source[:id], parent[:id], name
-            halt (extant.nil? ? 201 : 204)
         end
 
         def move *args
-            source = resource_repo.for_path(request.path_info).first
-            halt 404 if source.nil?
-
             # destination needs to be present, and local
 
             destination = request.get_header "HTTP_DESTINATION"
@@ -169,27 +181,34 @@ module Dav
             halt 400 unless destination.delete_prefix!(request.base_url)
             halt 400 unless destination.delete_prefix!(request.script_name)
 
-            # fetch the parent collection of the destination
-            # conflict if the parent doesn't exist (or isn't a collection)
+            resource_repo.connection.transaction do
 
-            parent_path, name = split_path destination
-            parent            = resource_repo.for_path(parent_path).select(:id, :is_coll).first
+                source = resource_repo.for_path(request.path_info).first
+                halt 404 if source.nil?
 
-            halt 409 if     parent.nil?
-            halt 409 unless parent[:is_coll]
+                # fetch the parent collection of the destination
+                # conflict if the parent doesn't exist (or isn't a collection)
 
-            # overwrititng
+                parent_path, name = split_path destination
+                parent            = resource_repo.for_path(parent_path).select(:id, :is_coll).first
 
-            extant = resource_repo.for_path(destination).select(:id).first
-            if !extant.nil?
-                overwrite = request.get_header("HTTP_OVERWRITE")&.downcase
-                halt 412 unless overwrite == "t"
+                halt 409 if     parent.nil?
+                halt 409 unless parent[:is_coll]
 
-                resource_repo.resources.where(id: extant[:id]).delete
+                # overwrititng
+
+                extant = resource_repo.for_path(destination).select(:id).first
+                if !extant.nil?
+                    overwrite = request.get_header("HTTP_OVERWRITE")&.downcase
+                    halt 412 unless overwrite == "t"
+
+                    resource_repo.resources.where(id: extant[:id]).delete
+                end
+
+                resource_repo.resources.where(id: source[:id]).update(pid: parent[:id], path: name)
+                halt (extant.nil? ? 201 : 204)
+
             end
-
-            resource_repo.resources.where(id: source[:id]).update(pid: parent[:id], path: name)
-            halt (extant.nil? ? 201 : 204)
         end
 
         def delete *args

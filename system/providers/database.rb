@@ -3,11 +3,15 @@ App::Container.register_provider(:database) do
         require "sequel"
         require "logger"
 
-        db = Sequel.connect(ENV['DATABASE_URL'], logger: Logger.new('./log/db.log'))
-        register('db.connection', db)
-    end
+        url     = ENV['DATABASE_URL']
+        options = {
+            logger: Logger.new('./log/db.log'),
+            connect_sqls: [
+                "PRAGMA journal_mode=WAL"
+            ]
+        }
 
-    start do
+        register 'db.connection', Sequel.connect(url, **options)
     end
 
     stop do

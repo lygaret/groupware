@@ -61,7 +61,7 @@ module Db
                     -- now, just select into the actual table
 
                 insert into resources (id, pid, path, is_coll, mime, content)
-                select newid, newpid, path, is_coll, mime, content from cte_with_fixed_pids
+                select newid, newpid, path, is_coll, mime, content from cte_with_fixed_pids;
             SQL
         end
 
