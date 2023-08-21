@@ -52,8 +52,8 @@ module Dav
 
             # fetch the parent collection
             # conflict if the parent doesn't exist (or isn't a collection)
-            name, parent_coll = resource_repo.parent_for_path(request.path_info)
-            parent            = parent_coll.first
+            parent_path, name = split_path request.path_info
+            parent            = resource_repo.for_path(parent_path).select(:id, :is_coll).first
 
             halt 409 if     parent.nil?
             halt 409 unless parent[:is_coll]
@@ -72,53 +72,66 @@ module Dav
             resource = resource_repo.for_path(request.path_info).first
 
             halt 404 if resource.nil?
-            halt 202 if resource[:is_coll]
+            halt 202 if resource[:is_coll] # no content for collections
 
-            if resource[:mime]
-                response.headers.merge!("Content-Type" => resource[:mime])
-            end
-
+            response.headers.merge!("Content-Type" => resource[:mime])
             resource[:content]
-        end
-
-        def post *args
-            halt 405 # method not supported
         end
 
         def put *args
             resource_id = resource_repo.for_path(request.path_info).select(:id).get(:id)
-            if resource_id
-                resource_repo.resources
-                    .where(id: resource_id)
-                    .update(mime: request.content_type, content: request.body)
-
-                halt 302, "Location" => request.path_info
-            else
-                # no content already here, get the parent id
-                req_path, parent_path = parse_paths(request.path_info)
-                parent_id             = resource_repo.for_path(parent_path).select(:id).get(:id)
-                halt 404 if parent_id.nil?
-
-                len    = Integer(request.content_length)
-                buffer = request.body.read(len)
-
-                resource_repo.resources.insert(pid: parent_id, path: req_path, mime: request.content_type, content: buffer)
-
-                response.status = 201
-                if request.content_type
-                    response.headers.merge!("Content-Type" => request.content_type)
-                end
-
-                buffer
+            if resource_id.nil? 
+                put_insert 
+            else 
+                put_update resource_id
             end
         end
+
+        def put_update resource_id
+            resource_repo.resources
+                .where(id: resource_id)
+                .update(mime: request.content_type, content: request.body)
+
+            halt 302, "Location" => request.path_info
+        end
+
+        def put_insert
+            # fetch the parent collection
+            # conflict if the parent doesn't exist (or isn't a collection)
+            parent_path, name = split_path request.path_info
+            parent            = resource_repo.for_path(parent_path).select(:id, :is_coll).first
+            
+            # conflict if the parent isn't a collection?
+            halt 404 if parent.nil?
+            halt 409 unless parent[:is_coll]
+
+            # read the body from the request
+            len    = Integer(request.content_length)
+            buffer = request.body.read(len)
+            mime   = request.content_type
+
+            resource_repo.resources.insert(pid:  parent[:id], path: name, mime: mime, content: buffer)
+            halt 201
+        end
+
+        def post(*args) = halt 405 # method not supported
 
         def delete *args
             res_id = resource_repo.for_path(request.path_info).select(:id).get(:id)
             halt 404 if res_id.nil?
 
+            # deletes cascade with parent_id
             resource_repo.resources.where(id: res_id).delete
             halt 201
+        end
+
+        private
+
+        def split_path(path)
+            parts = path.split("/")
+            leaf  = parts.pop
+
+            [parts.join("/"), leaf]
         end
 
     end
