@@ -12,17 +12,17 @@ Sequel.migration do
 
             CREATE INDEX resources_pid_idx ON resources(pid);
 
-            CREATE VIEW resource_paths (id, fullpath) AS
-                WITH RECURSIVE _paths(id, fullpath) AS (
-                    SELECT resources.id, '/' || resources.path
+            CREATE VIEW resource_paths (id, depth, fullpath) AS
+                WITH RECURSIVE _paths(id, depth, fullpath) AS (
+                    SELECT resources.id, 0, '/' || resources.path
                     FROM   resources
                     WHERE  resources.pid IS NULL
                     UNION
-                    SELECT resources.id, _paths.fullpath || '/' || resources.path
+                    SELECT resources.id, _paths.depth + 1, _paths.fullpath || '/' || resources.path
                     FROM   resources, _paths
                     WHERE  resources.pid = _paths.id
                 )
-                SELECT id, fullpath FROM _paths;
+                SELECT id, depth, fullpath FROM _paths;
 
             CREATE VIEW resource_ephemeral_root (id, pid, path, is_coll, content, mime) AS
                 WITH _root(id, pid, path, is_coll, content, mime) AS (

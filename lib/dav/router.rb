@@ -5,6 +5,12 @@ module Dav
 
         include App::Import['db.resource_repo']
 
+        def call!(...)
+            resource_repo.connection.transaction do
+                super(...)
+            end
+        end
+
     # 9.3 MKCOL Method
     # MKCOL creates a new collection resource at the location specified by the Request-URI. If the Request-URI is already mapped to a resource, then the MKCOL MUST fail. 
     # During MKCOL processing, a server MUST make the Request-URI an internal member of its parent collection, unless the Request-URI is "/". If no such ancestor exists, 
@@ -72,9 +78,9 @@ module Dav
             resource = resource_repo.for_path(request.path_info).first
 
             halt 404 if resource.nil?
-            halt 202 if resource[:is_coll] # no content for collections
+            halt 202 if resource[:is_coll] == 1 # no content for collections
 
-            response.headers.merge!("Content-Type" => resource[:mime])
+            response.headers.merge!("Content-Type" => resource[:mime]) unless resource[:mime].nil?
             resource[:content]
         end
 
@@ -92,7 +98,7 @@ module Dav
                 .where(id: resource_id)
                 .update(mime: request.content_type, content: request.body)
 
-            halt 302, "Location" => request.path_info
+            halt 204 # no content
         end
 
         def put_insert
@@ -111,10 +117,80 @@ module Dav
             mime   = request.content_type
 
             resource_repo.resources.insert(pid:  parent[:id], path: name, mime: mime, content: buffer)
-            halt 201
+            halt 201 # created
         end
 
         def post(*args) = halt 405 # method not supported
+
+        def copy *args
+            source = resource_repo.for_path(request.path_info).first
+            halt 404 if source.nil?
+
+            # destination needs to be present, and local
+
+            destination = request.get_header "HTTP_DESTINATION"
+            halt 400 if destination.nil?
+            halt 400 unless destination.delete_prefix!(request.base_url)
+            halt 400 unless destination.delete_prefix!(request.script_name)
+
+            # fetch the parent collection of the destination
+            # conflict if the parent doesn't exist (or isn't a collection)
+
+            parent_path, name = split_path destination
+            parent            = resource_repo.for_path(parent_path).select(:id, :is_coll).first
+
+            halt 409 if     parent.nil?
+            halt 409 unless parent[:is_coll]
+
+            # overwrititng
+
+            extant = resource_repo.for_path(destination).select(:id).first
+            if !extant.nil?
+                overwrite = request.get_header("HTTP_OVERWRITE")&.downcase
+                halt 412 unless overwrite == "t"
+
+                resource_repo.resources.where(id: extant[:id]).delete
+            end
+
+            # now we can copy
+
+            resource_repo.clone_tree source[:id], parent[:id], name
+            halt (extant.nil? ? 201 : 204)
+        end
+
+        def move *args
+            source = resource_repo.for_path(request.path_info).first
+            halt 404 if source.nil?
+
+            # destination needs to be present, and local
+
+            destination = request.get_header "HTTP_DESTINATION"
+            halt 400 if destination.nil?
+            halt 400 unless destination.delete_prefix!(request.base_url)
+            halt 400 unless destination.delete_prefix!(request.script_name)
+
+            # fetch the parent collection of the destination
+            # conflict if the parent doesn't exist (or isn't a collection)
+
+            parent_path, name = split_path destination
+            parent            = resource_repo.for_path(parent_path).select(:id, :is_coll).first
+
+            halt 409 if     parent.nil?
+            halt 409 unless parent[:is_coll]
+
+            # overwrititng
+
+            extant = resource_repo.for_path(destination).select(:id).first
+            if !extant.nil?
+                overwrite = request.get_header("HTTP_OVERWRITE")&.downcase
+                halt 412 unless overwrite == "t"
+
+                resource_repo.resources.where(id: extant[:id]).delete
+            end
+
+            resource_repo.resources.where(id: source[:id]).update(pid: parent[:id], path: name)
+            halt (extant.nil? ? 201 : 204)
+        end
 
         def delete *args
             res_id = resource_repo.for_path(request.path_info).select(:id).get(:id)
@@ -122,7 +198,7 @@ module Dav
 
             # deletes cascade with parent_id
             resource_repo.resources.where(id: res_id).delete
-            halt 201
+            halt 204
         end
 
         private
