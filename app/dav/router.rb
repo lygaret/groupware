@@ -14,10 +14,8 @@ module Dav
         raise unless ex.cause.is_a? SQLite3::BusyException
         raise if attempted
 
-        logger.error ex
-        logger.error "database locked, retrying..."
-
         attempted = true
+        logger.error "database locked, retrying... #{ex}"
         retry
       end
     end
@@ -159,7 +157,7 @@ module Dav
       destination = request.get_header "HTTP_DESTINATION"
       halt 400 if destination.nil?
       halt 400 unless destination.delete_prefix!(request.base_url)
-      halt 400 unless destination.delete_prefix!(request.script_name)
+      halt 400 unless request.script_name == "" || destination.delete_prefix!(request.script_name)
 
       resource_repo.connection.transaction do
         source = resource_repo.at_path(request.path_info).first

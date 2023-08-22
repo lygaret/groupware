@@ -1,4 +1,10 @@
 GIT
+  remote: https://gist.github.com/117441fc5236de9f7d54b76894d69dec.git
+  revision: a4bd177e0d2c49770ae19d6cc716e890af60a7b3
+  specs:
+    string-inquirer (0.0.1)
+
+GIT
   remote: https://github.com/guilleiguaran/nancy.git
   revision: 0ee50b82cad7ef22a44a78ae8fc1a9d25e0d4f16
   specs:
@@ -31,6 +37,10 @@ GEM
       concurrent-ruby (~> 1.0)
       dry-core (~> 1.0, < 2)
     dry-inflector (1.0.0)
+    dry-logic (1.5.0)
+      concurrent-ruby (~> 1.0)
+      dry-core (~> 1.0, < 2)
+      zeitwerk (~> 2.6)
     dry-monitor (1.0.1)
       dry-configurable (~> 1.0, < 2)
       dry-core (~> 1.0, < 2)
@@ -40,6 +50,12 @@ GEM
       dry-configurable (~> 1.0, < 2)
       dry-core (~> 1.0, < 2)
       dry-inflector (~> 1.0, < 2)
+    dry-types (1.7.1)
+      concurrent-ruby (~> 1.0)
+      dry-core (~> 1.0)
+      dry-inflector (~> 1.0)
+      dry-logic (~> 1.4)
+      zeitwerk (~> 2.6)
     io-console (0.6.0)
     irb (1.7.4)
       reline (>= 0.3.6)
@@ -126,6 +142,7 @@ DEPENDENCIES
   dry-events
   dry-monitor
   dry-system
+  dry-types
   nancy!
   nokogiri
   rack
@@ -135,6 +152,7 @@ DEPENDENCIES
   sequel
   sqlite3
   standard
+  string-inquirer (~> 0)!
   zeitwerk
 
 RUBY VERSION

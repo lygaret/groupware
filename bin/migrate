@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'optparse'
-require_relative '../system/app'
+require_relative '../config/app'
 App::Container.finalize!
 
 options = {}

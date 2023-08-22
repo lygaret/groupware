@@ -24,7 +24,7 @@ RSpec.configure do |config|
   Kernel.srand config.seed
 end
 
-require_relative "../system/app"
+require_relative "../config/app"
 require "dry/system/stubs"
 
 App::Container.enable_stubs!

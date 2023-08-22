@@ -1,10 +1,17 @@
-require "nancy/base"
-require_relative "system/app"
+require "rack"
 
-class MainApp < Nancy::Base
-  get("/") { "hi from nancy" }
-  map("/dav") { run App::Container["dav.router"] }
-end
+require_relative "config/app"
+require "http/logger"
 
 App::Container.finalize!
-run MainApp.new
+
+app = Rack::Builder.new do
+  use Http::Logger, App::Container["logger"]
+  use Rack::ShowExceptions
+  use Rack::Deflater
+  use Rack::ConditionalGet
+  use Rack::ETag
+  run App::Container["dav.router"]
+end
+
+run app
