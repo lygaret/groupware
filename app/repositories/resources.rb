@@ -1,5 +1,5 @@
-module Db
-  class ResourceRepo
+module Repositories
+  class Resources
     include App::Import["db.connection"]
 
     def resources = connection[:resources]
