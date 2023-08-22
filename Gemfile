@@ -23,4 +23,5 @@ end
 group :development, :test do
     gem "debug"
     gem "rackup"
+    gem "standard"
 end

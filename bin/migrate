@@ -17,8 +17,6 @@ OptionParser.new do |opts|
     end
 end.parse!
 
-puts "TARGET: #{options[:target] || 'nil'}"
-
 # because we need specific database setup, 
 # we can't use the `sequel -m` cli for migrations
 

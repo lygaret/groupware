@@ -1,3 +1,5 @@
+require 'securerandom'
+
 App::Container.register_provider(:database) do
     prepare do
         require "sequel"
@@ -8,10 +10,16 @@ App::Container.register_provider(:database) do
             logger: Logger.new('./log/db.log'),
             connect_sqls: [
                 "PRAGMA journal_mode=WAL"
-            ]
+            ],
+            after_connect: proc do |c|
+                c.create_function("uuid", 0) do |func|
+                    func.result = SecureRandom.uuid
+                end
+            end
         }
 
-        register 'db.connection', Sequel.connect(url, **options)
+        db = Sequel.connect(url, **options)
+        register 'db.connection', db
     end
 
     stop do

@@ -1,39 +1,59 @@
 Sequel.migration do
     up do
         run <<~SQL
+
+            -- the tree structure of the nodes
+
             CREATE TABLE resources (
-                id      INTEGER PRIMARY KEY AUTOINCREMENT,
-                pid     INTEGER NULL REFERENCES resources(id) ON DELETE CASCADE,
-                path    TEXT NOT NULL,
-                is_coll INTEGER NOT NULL DEFAULT 0,
+                id      TEXT NOT NULL PRIMARY KEY,
+                pid     TEXT NULL REFERENCES resources(id) ON DELETE CASCADE,
+
+                path    TEXT NOT NULL,              -- the path segment name
+                coll    INTEGER NOT NULL DEFAULT 0, -- is collection?
+
+                type    TEXT,
+                length  INTEGER,
                 content BLOB,
-                mime    TEXT
+
+                etag       TEXT,
+                created_at TEXT,
+                updated_at TEXT
             );
 
-            CREATE INDEX resources_pid_idx ON resources(pid);
+            CREATE        INDEX resources_id_idx      ON resources(id);
+            CREATE        INDEX resources_pid_idx     ON resources(pid);
+            CREATE UNIQUE INDEX resources_pidpath_idx ON resources(pid, path);
 
-            CREATE VIEW resource_paths (id, depth, fullpath) AS
-                WITH RECURSIVE _paths(id, depth, fullpath) AS (
-                    SELECT resources.id, 0, '/' || resources.path
-                    FROM   resources
-                    WHERE  resources.pid IS NULL
-                    UNION
-                    SELECT resources.id, _paths.depth + 1, _paths.fullpath || '/' || resources.path
-                    FROM   resources, _paths
-                    WHERE  resources.pid = _paths.id
-                )
-                SELECT id, depth, fullpath FROM _paths;
+            -- view which represents the materialized paths along the tree
+            -- used to search the tree for a given path/depth
 
-            CREATE VIEW resource_ephemeral_root (id, pid, path, is_coll, content, mime) AS
-                WITH _root(id, pid, path, is_coll, content, mime) AS (
-                    VALUES(NULL, NULL, '', TRUE, NULL, NULL)
+            CREATE VIEW resource_paths (id, depth, path) AS
+                WITH RECURSIVE paths(id, depth, path) AS (
+                    SELECT r.id, 0, '/' || r.path
+                    FROM   resources r 
+                    WHERE  r.pid IS NULL -- root nodes
+                        UNION
+                    SELECT r.id, p.depth + 1, p.path || '/' || r.path
+                    FROM   resources r, paths p
+                    WHERE  r.pid = p.id  -- top-down traversal
                 )
-                SELECT * from _root;
+                SELECT id, depth, path FROM paths;
+
+            -- view which can be selected against to represent the empty root
+            -- used to allow querying the "parent" of a node without special casing
+
+            CREATE VIEW resource_ephemeral_root (id, pid, path, coll) AS
+                WITH ephemeral_root(id, pid, path, coll) AS (
+                    VALUES(NULL, NULL, '', TRUE)
+                )
+                SELECT * from ephemeral_root;
+
         SQL
     end
 
     down do
         drop_view  :resource_paths
+        drop_view  :resource_ephemeral_root
         drop_table :resources
     end
 end

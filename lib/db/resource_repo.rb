@@ -7,15 +7,19 @@ module Db
         COL_ID        = Sequel[:resource_paths][:id]
         COL_FULLPATH  = Sequel[:resource_paths][:fullpath]
 
-        def for_path(path)
+        def at_path path
             return connection[:resource_ephemeral_root] if path == ""
 
-            resources.where(id:
-                resources
-                    .select(COL_ID)
+            connection[:resources].where(id:
+                connection[:resources]
+                    .select(Sequel[:resources][:id])
                     .join(:resource_paths, id: :id)
-                    .where(COL_FULLPATH => path&.chomp("/"))
+                    .where(Sequel[:resource_paths][:path] => path&.chomp("/"))
             )
+        end
+
+        def move_tree source_id, dest_id, name
+            resources.where(id: source_id).update(pid: dest_id, path: name)
         end
 
         def clone_tree source_id, dest_id, name
@@ -23,45 +27,49 @@ module Db
                     -- get the source branch nodes into a cte
 
                 with 
-                recursive cte_to_copy as (
-                    -- base - root of the branch to copy
-                    select id, pid, :name as path, is_coll, mime, content
+                recursive cte_descendants as (
+                    -- base - root of the branch to copy (renamed)
+                    select uuid() as newid, resources.*
                     from resources where id = :source_id
                     union
                     -- recursive - children of the previously selected nodes
-                    select r.*
-                    from resources as r
-                    join cte_to_copy as c on r.pid = c.id
+                    select uuid() as newid, resources.*
+                    from resources
+                    join cte_descendants as c on resources.pid = c.id
                 ),
 
-                    -- then, generate new ids for the nodes we're copying 
-                    -- separate CTE, since window functions don't work in recursive ctes
-                    -- TODO: if this was a UUID table, we could generate the new id in the first cte
-
-                cte_with_new_ids as (
-                    select
-                        row_number() over (order by id) + (select max(id) from resources) as newid,
-                        cte_to_copy.*
-                    from cte_to_copy
-                ),
-
-                    -- finally, since we recorded the original id/pid and have the new id,
+                    -- now, since we've recorded the original id/pid and have the new uuid,
                     -- we can join and use the correct new id for the parent relationship
                     -- if new pid is null (from left join), it's the top-level, and it gets set to the destination
 
-                cte_with_fixed_pids as (
+                cte_fixed_pids as (
                     select
-                        a.newid as newid,
-                        coalesce(b.newid, :dest_id) as newpid,
-                        a.*
-                    from cte_with_new_ids a
-                    left join cte_with_new_ids b on a.pid = b.id
+                        coalesce(parent.newid, :dest_id) as newpid,
+                        case when parent.id is null 
+                            then :name 
+                            else child.path 
+                        end as newpath,
+                        child.*
+                    from      cte_descendants child
+                    left join cte_descendants parent on child.pid = parent.id
                 )
 
-                    -- now, just select into the actual table
+                    -- now, just select into the actual tables
 
-                insert into resources (id, pid, path, is_coll, mime, content)
-                select newid, newpid, path, is_coll, mime, content from cte_with_fixed_pids;
+                insert into resources 
+                select
+                    fixed.newid,
+                    fixed.newpid,
+                    fixed.newpath,
+
+                    fixed.coll,
+                    fixed.type,
+                    fixed.length,
+                    fixed.content,
+                    fixed.etag,
+                    datetime('now'),
+                    null
+                from cte_fixed_pids as fixed;
             SQL
         end
 
