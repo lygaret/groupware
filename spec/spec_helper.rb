@@ -1,4 +1,4 @@
-ENV['APP_ENV'] = 'test'
+ENV["APP_ENV"] = "test"
 
 RSpec.configure do |config|
   config.warnings = true
@@ -24,17 +24,17 @@ RSpec.configure do |config|
   Kernel.srand config.seed
 end
 
-require_relative '../system/app'
-require 'dry/system/stubs'
+require_relative "../system/app"
+require "dry/system/stubs"
 
 App::Container.enable_stubs!
 App::Container.finalize!
 
-support_glob = File.expand_path('./support/**/*.rb', __dir__)
+support_glob = File.expand_path("./support/**/*.rb", __dir__)
 Dir[support_glob].sort.each { |f| require f }
 
 begin
-  App::Container['db.migrator'].check!
+  App::Container["db.migrator"].check!
 rescue Sequel::Migrator::NotCurrentError => e
   puts e.to_s.strip
   exit 1

@@ -17,11 +17,11 @@ gem "dry-events"
 gem "dry-monitor"
 
 group :test do
-    gem "rspec", "~> 3.12"
+  gem "rspec", "~> 3.12"
 end
 
 group :development, :test do
-    gem "debug"
-    gem "rackup"
-    gem "standard"
+  gem "debug"
+  gem "rackup"
+  gem "standard"
 end
