@@ -1,5 +1,5 @@
 module Http
-  class Router
+  class MethodRouter
 
     attr_reader :request, :response, :params, :env
 
@@ -20,18 +20,17 @@ module Http
         halt 405 unless respond_to? meth
 
         before_req
-        @response.body = method(meth).()
+        body = method(meth).()
+        body = [body] unless body.respond_to? :each
+        @response.body = body
       end
 
       after_req
       @response.finish
     end
 
-    def before_req
-    end
-
-    def after_req
-    end
+    def before_req; end
+    def after_req; end
 
     def halt(*res)
       response.status = res.detect { |x| x.is_a?(Integer) } || 200

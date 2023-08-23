@@ -1,13 +1,24 @@
 require "time"
-require "http/router"
+
+require "http/method_router"
+require "http/request_path"
 
 module Dav
-  class Router < Http::Router
+  class Router < Http::MethodRouter
+
     include App::Import[
       "logger",
       "repositories.resources"
     ]
 
+    attr_reader :request_path
+
+    OPTIONS_SUPPORTED_METHODS = %w[
+      OPTIONS HEAD GET PUT DELETE # no post
+      MKCOL COPY MOVE LOCK UNLOCK PROPFIND PROPPATCH
+    ].join ","
+
+    # override to retry on database locked errors
     def call!(...)
       attempted = false
       begin
@@ -16,33 +27,30 @@ module Dav
         raise unless ex.cause.is_a? SQLite3::BusyException
         raise if attempted
 
-        attempted = true
         logger.error "database locked, retrying... #{ex}"
+        attempted = true
         retry
       end
     end
 
     def before_req
-      response["DAV"] = "1, 2, 3"
-    end
+      super
 
-    def parse_paths path_info
-      parts = path_info.split("/")
-      [parts.pop, parts.join("/")]
+      @request_path = Http::RequestPath.from_path @request.path_info
     end
 
     def options *args
-      response["Allow"] = "OPTIONS,HEAD,GET,PUT,POST,DELETE,PROPFIND,PROPPATCH,MKCOL,COPY,MOVE,LOCK,UNLOCK"
-      halt 200
+      response["Allow"] = OPTIONS_SUPPORTED_METHODS
+      ""
     end
 
-    def head(*)
-      get(*) # sets headers and throws
-      nil    # but don't include a body in head requests
+    def head(...)
+      get(...) # sets headers and throws
+      ""       # but don't include a body in head requests
     end
 
     def get *args
-      resource = resources.at_path(request.path_info).first
+      resource = resources.at_path(request_path.path).first
 
       halt 404 if resource.nil?
       halt 202 if resource[:coll] == 1 # no content for collections
@@ -58,7 +66,7 @@ module Dav
     end
 
     def put *args
-      resource_id = resources.at_path(request.path_info).select(:id).get(:id)
+      resource_id = resources.at_path(request_path.path).get(:id)
       if resource_id.nil?
         put_insert
       else
@@ -68,54 +76,43 @@ module Dav
 
     def put_update resource_id
       len = Integer(request.content_length)
-      resources.resources
-        .where(id: resource_id)
-        .update(
-          type: request.content_type,
-          content: request.body.read(len),
-          length: len,
-          updated_at: Time.now.utc
-        )
+      resources.update(
+        id: resource_id,
+        type: request.content_type,
+        length: len,
+        content: request.body.read(len),
+      )
 
       halt 204 # no content
     end
 
     def put_insert
       resources.connection.transaction do
-        # fetch the parent collection
         # conflict if the parent doesn't exist (or isn't a collection)
-        parent_path, name = split_path request.path_info
-        parent = resources.at_path(parent_path).select(:id, :coll).first
-
-        # conflict if the parent isn't a collection?
+        parent = resources.at_path(request_path.parent).select(:id, :coll).first
         halt 404 if parent.nil?
         halt 409 unless parent[:coll]
 
         # read the body from the request
         len = Integer(request.content_length)
-        resources.resources.insert(
-          id: Sequel.function(:uuid),
-          pid: parent[:id],
-          path: name,
 
+        resources.insert(
+          pid: parent[:id], 
+          path: request_path.name,
           type: request.content_type,
-          content: request.body.read(len),
           length: len,
-
-          created_at: Time.now.utc
+          content: request.body.read(len),
         )
-
         halt 201 # created
       end
     end
 
     def delete *args
-      res_id = resources.at_path(request.path_info).select(:id).get(:id)
+      res_id = resources.at_path(request_path.path).select(:id).get(:id)
       halt 404 if res_id.nil?
 
-      # deletes cascade with parent_id
-      resources.resources.where(id: res_id).delete
-      halt 204 # no content
+      resources.delete(id: res_id)
+      halt 204
     end
 
     def mkcol *args
@@ -125,23 +122,19 @@ module Dav
 
       resources.connection.transaction do
         # not allowed if already exists RFC2518 8.3.2
-        halt 405 unless resources.at_path(request.path_info).empty?
+        halt 405 unless resources.at_path(request_path.path).empty?
 
-        # fetch the parent collection
         # conflict if the parent doesn't exist (or isn't a collection)
-        parent_path, name = split_path request.path_info
-        parent = resources.at_path(parent_path).select(:id, :coll).first
+        parent = resources.at_path(request_path.parent).select(:id, :coll).first
 
         halt 409 if parent.nil?
         halt 409 unless parent[:coll]
 
         # otherwise, insert!
-        resources.resources.insert(
-          id: Sequel.function(:uuid),
+        resources.insert(
           pid: parent[:id],
-          path: name,
-          coll: true,
-          created_at: Time.now
+          path: request_path.name,
+          coll: true
         )
       end
 
@@ -160,37 +153,33 @@ module Dav
       destination = request.get_header "HTTP_DESTINATION"
       halt 400 if destination.nil?
       halt 400 unless destination.delete_prefix!(request.base_url)
-      halt 400 unless request.script_name == "" || destination.delete_prefix!(request.script_name)
+      halt 400 unless destination.delete_prefix!(request.script_name) || request.script_name == ""
 
+      destination = Http::RequestPath.from_path destination
       resources.connection.transaction do
-        source = resources.at_path(request.path_info).first
+        source = resources.at_path(request_path.path).first
         halt 404 if source.nil?
 
         # fetch the parent collection of the destination
         # conflict if the parent doesn't exist (or isn't a collection)
-
-        parent_path, name = split_path destination
-        parent = resources.at_path(parent_path).select(:id, :coll).first
-
+        parent = resources.at_path(destination.parent).select(:id, :coll).first
         halt 409 if parent.nil?
         halt 409 unless parent[:coll]
 
         # overwrititng
-
-        extant = resources.at_path(destination).select(:id).first
+        extant = resources.at_path(destination.path).select(:id).first
         if !extant.nil?
           overwrite = request.get_header("HTTP_OVERWRITE")&.downcase
           halt 412 unless overwrite == "t"
 
-          resources.resources.where(id: extant[:id]).delete
+          resources.delete(id: extant[:id])
         end
 
         # now we can copy / move
-
         if clone
-          resources.clone_tree source[:id], parent[:id], name
-        else # move
-          resources.move_tree source[:id], parent[:id], name
+          resources.clone_tree source[:id], parent[:id], destination.name
+        else 
+          resources.move_tree source[:id], parent[:id], destination.name
         end
 
         halt(extant.nil? ? 201 : 204)
@@ -209,13 +198,5 @@ module Dav
       halt 500
     end
 
-    private
-
-    def split_path(path)
-      parts = path.split("/")
-      leaf = parts.pop
-
-      [parts.join("/"), leaf]
-    end
   end
 end

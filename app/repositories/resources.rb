@@ -7,6 +7,9 @@ module Repositories
     COL_ID = Sequel[:resource_paths][:id]
     COL_FULLPATH = Sequel[:resource_paths][:fullpath]
 
+    UUID_FUN = Sequel.function(:uuid)
+    NOW_FUN  = Sequel.lit("datetime('now')")
+
     def at_path path
       return connection[:resource_ephemeral_root] if path == ""
 
@@ -18,13 +21,13 @@ module Repositories
     end
 
     def move_tree source_id, dest_id, name
-      resources.where(id: source_id).update(pid: dest_id, path: name)
+      resources
+        .where(id: source_id)
+        .update(pid: dest_id, path: name, updated_at: NOW_FUN)
     end
 
     def clone_tree source_id, dest_id, name
-      connection[<<~SQL, {source_id: source_id, dest_id: dest_id, name: name}].insert
-            -- get the source branch nodes into a cte
-
+      @clone_tree_statement ||= connection[<<~SQL].prepare(:insert, :clone_tree)
         with 
         recursive cte_descendants as (
             -- base - root of the branch to copy (renamed)
@@ -70,6 +73,34 @@ module Repositories
             null
         from cte_fixed_pids as fixed;
       SQL
+
+      @clone_tree_statement
+        .call(source_id: source_id, dest_id: dest_id, name: name)
     end
+
+    def insert pid:, path:, **data
+      opts = data.merge(
+        id: UUID_FUN,
+        pid: pid,
+        path: path,
+        created_at: NOW_FUN
+      )
+
+      resources.insert(**opts)
+    end
+
+    def update id:, **data
+      opts = data.merge(
+        updated_at: NOW_FUN
+      )
+
+      resources.where(id: id).update(**opts)
+    end
+
+    def delete id:
+      # cascades in the database to delete children
+      resources.where(id: id).delete
+    end
+
   end
 end

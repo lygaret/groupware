@@ -4,6 +4,13 @@ GIT
   specs:
     string-inquirer (0.0.1)
 
+GIT
+  remote: https://github.com/rack/rack.git
+  revision: 696ed9e8f48053683a0a19fc68eb49f094c0efcb
+  branch: main
+  specs:
+    rack (3.0.0)
+
 GEM
   remote: https://rubygems.org/
   specs:
@@ -60,7 +67,6 @@ GEM
       ast (~> 2.4.1)
       racc
     racc (1.7.1)
-    rack (3.0.8)
     rackup (2.1.0)
       rack (>= 3)
       webrick (~> 1.8)
@@ -130,7 +136,7 @@ DEPENDENCIES
   dry-system
   dry-types
   nokogiri
-  rack
+  rack (~> 3.0)!
   rackup
   rake
   rspec (~> 3.12)
