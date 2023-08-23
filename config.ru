@@ -5,13 +5,13 @@ require "http/logger"
 
 App::Container.finalize!
 
-app = Rack::Builder.new do
-  use Http::Logger, App::Container["logger"]
-  use Rack::ShowExceptions
-  use Rack::Deflater
-  use Rack::ConditionalGet
-  use Rack::ETag
-  run App::Container["dav.router"]
-end
+use Rack::ContentLength
+use Rack::Deflater
 
-run app
+use Http::Logger, App::Container["logger"]
+use Rack::ShowExceptions
+
+use Rack::Lint
+use Rack::TempfileReaper
+
+run App::Container["dav.router"]

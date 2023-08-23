@@ -22,8 +22,8 @@ module Dav
       end
     end
 
-    before do
-      response["DAV"] = "1"
+    def before_req
+      response["DAV"] = "1, 2, 3"
     end
 
     def parse_paths path_info
@@ -48,12 +48,13 @@ module Dav
       halt 202 if resource[:coll] == 1 # no content for collections
 
       headers = {
-        "Last-Modified" => resource[:updated_at] || resource[:created_at],
-        "Content-Type" => resource[:type]
+        "Last-Modified"  => resource[:updated_at] || resource[:created_at],
+        "Content-Type"   => resource[:type],
+        "Content-Length" => resource[:length].to_s
       }.reject { |k, v| v.nil? }
       response.headers.merge! headers
 
-      resource[:content]
+      [resource[:content].to_str]
     end
 
     def put *args
@@ -142,9 +143,9 @@ module Dav
           coll: true,
           created_at: Time.now
         )
-
-        halt 201 # created
       end
+
+      halt 201 # created
     end
 
     def post(*args) = halt 405 # method not supported

@@ -4,15 +4,6 @@ GIT
   specs:
     string-inquirer (0.0.1)
 
-GIT
-  remote: https://github.com/guilleiguaran/nancy.git
-  revision: 0ee50b82cad7ef22a44a78ae8fc1a9d25e0d4f16
-  specs:
-    nancy (0.6.0)
-      mustermann
-      rack
-      rack-session
-
 GEM
   remote: https://rubygems.org/
   specs:
@@ -62,8 +53,6 @@ GEM
     json (2.6.3)
     language_server-protocol (3.17.0.3)
     lint_roller (1.1.0)
-    mustermann (3.0.0)
-      ruby2_keywords (~> 0.0.1)
     nokogiri (1.15.4-x86_64-linux)
       racc (~> 1.4)
     parallel (1.23.0)
@@ -72,8 +61,6 @@ GEM
       racc
     racc (1.7.1)
     rack (3.0.8)
-    rack-session (2.0.0)
-      rack (>= 3.0.0)
     rackup (2.1.0)
       rack (>= 3)
       webrick (~> 1.8)
@@ -114,7 +101,6 @@ GEM
       rubocop (>= 1.7.0, < 2.0)
       rubocop-ast (>= 0.4.0)
     ruby-progressbar (1.13.0)
-    ruby2_keywords (0.0.5)
     sequel (5.71.0)
     sqlite3 (1.6.3-x86_64-linux)
     standard (1.31.0)
@@ -143,7 +129,6 @@ DEPENDENCIES
   dry-monitor
   dry-system
   dry-types
-  nancy!
   nokogiri
   rack
   rackup

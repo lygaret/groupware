@@ -3,8 +3,6 @@ source "https://rubygems.org"
 ruby "~> 3.1"
 
 gem "rack"
-gem "nancy", github: "guilleiguaran/nancy"
-
 gem "sequel"
 gem "sqlite3"
 gem "nokogiri"
