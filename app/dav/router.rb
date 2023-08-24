@@ -1,5 +1,6 @@
 require "time"
 
+require "ioutil/md5_reader"
 require "http/method_router"
 require "http/request_path"
 
@@ -56,9 +57,10 @@ module Dav
       halt 202 if resource[:coll] == 1 # no content for collections
 
       headers = {
-        "Last-Modified"  => resource[:updated_at] || resource[:created_at],
+        "Content-Length" => resource[:length].to_s,
         "Content-Type"   => resource[:type],
-        "Content-Length" => resource[:length].to_s
+        "Last-Modified"  => resource[:updated_at] || resource[:created_at],
+        "ETag"           => resource[:etag]
       }.reject { |k, v| v.nil? }
       response.headers.merge! headers
 
@@ -76,11 +78,15 @@ module Dav
 
     def put_update resource_id
       len = Integer(request.content_length)
+      body = IOUtil::MD5Reader.new request.body
+      content = body.read(len) # hashes as a side effect
+
       resources.update(
         id: resource_id,
         type: request.content_type,
         length: len,
-        content: request.body.read(len),
+        content: content,
+        etag: body.hash
       )
 
       halt 204 # no content
@@ -94,14 +100,17 @@ module Dav
         halt 409 unless parent[:coll]
 
         # read the body from the request
-        len = Integer(request.content_length)
+        len  = Integer(request.content_length)
+        body = IOUtil::MD5Reader.new request.body
+        content = body.read(len) # hashes as a side effect
 
         resources.insert(
           pid: parent[:id], 
           path: request_path.name,
           type: request.content_type,
           length: len,
-          content: request.body.read(len),
+          content: content,
+          etag: body.hash
         )
         halt 201 # created
       end

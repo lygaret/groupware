@@ -27,7 +27,47 @@ module Repositories
     end
 
     def clone_tree source_id, dest_id, name
-      @clone_tree_statement ||= connection[<<~SQL].prepare(:insert, :clone_tree)
+      clone_tree_preparedstmt
+        .call(source_id: source_id, dest_id: dest_id, name: name)
+    end
+
+    def insert pid:, path:, **data
+      data = blobify_data_content data
+      opts = data.merge(
+        id: UUID_FUN,
+        pid: pid,
+        path: path,
+        created_at: NOW_FUN
+      )
+
+      resources.insert(**opts)
+    end
+
+    def update id:, **data
+      data = blobify_data_content data
+      opts = data.merge(
+        updated_at: NOW_FUN
+      )
+
+      resources.where(id: id).update(**opts)
+    end
+
+    def delete id:
+      # cascades in the database to delete children
+      resources.where(id: id).delete
+    end
+
+    private
+
+    def blobify_data_content data
+      return data unless data.key? :content
+      return data if data[:content].nil?
+
+      data.merge(content: Sequel::SQL::Blob.new(data[:content]))
+    end
+
+    def clone_tree_preparedstmt
+      @clone_tree_preparedstmt ||= connection[<<~SQL].prepare(:insert, :clone_tree)
         with 
         recursive cte_descendants as (
             -- base - root of the branch to copy (renamed)
@@ -73,33 +113,6 @@ module Repositories
             null
         from cte_fixed_pids as fixed;
       SQL
-
-      @clone_tree_statement
-        .call(source_id: source_id, dest_id: dest_id, name: name)
-    end
-
-    def insert pid:, path:, **data
-      opts = data.merge(
-        id: UUID_FUN,
-        pid: pid,
-        path: path,
-        created_at: NOW_FUN
-      )
-
-      resources.insert(**opts)
-    end
-
-    def update id:, **data
-      opts = data.merge(
-        updated_at: NOW_FUN
-      )
-
-      resources.where(id: id).update(**opts)
-    end
-
-    def delete id:
-      # cascades in the database to delete children
-      resources.where(id: id).delete
     end
 
   end
