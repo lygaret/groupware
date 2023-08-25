@@ -1,4 +1,6 @@
 require "time"
+require "nokogiri"
+require "pp"
 
 require "ioutil/md5_reader"
 require "http/method_router"
@@ -14,10 +16,20 @@ module Dav
 
     attr_reader :request_path
 
+    DAV_NSDECL = { d: "DAV:" }
+    DAV_DEPTHS = %w[infinity 0 1]
+
     OPTIONS_SUPPORTED_METHODS = %w[
-      OPTIONS HEAD GET PUT DELETE # no post
-      MKCOL COPY MOVE LOCK UNLOCK PROPFIND PROPPATCH
+      OPTIONS HEAD GET PUT DELETE
+      MKCOL COPY MOVE LOCK UNLOCK 
+      PROPFIND PROPPATCH
     ].join ","
+
+    def before_req
+      super
+
+      @request_path = Http::RequestPath.from_path @request.path_info
+    end
 
     # override to retry on database locked errors
     def call!(...)
@@ -32,12 +44,6 @@ module Dav
         attempted = true
         retry
       end
-    end
-
-    def before_req
-      super
-
-      @request_path = Http::RequestPath.from_path @request.path_info
     end
 
     def options *args
@@ -195,8 +201,204 @@ module Dav
       end
     end
 
+    def proppatch *args
+      resource_id = resources.at_path(request_path.path).get(:id)
+      halt 404 if resource_id.nil?
+
+      # body must be declared xml (missing content type means we have to guess)
+      halt 415 unless request.content_type.nil? || request.content_type =~ /(text|application)\/xml/
+
+      # body must be a valid propertyupdate element
+      body   = request.body.gets
+      doc    = Nokogiri::XML.parse body rescue halt(400, $!.to_s)
+      update = doc.at_css("d|propertyupdate:only-child", DAV_NSDECL)
+      halt 415 if update.nil?
+
+      # handle the (set|remove)+ in the update children in order
+      resources.connection.transaction do
+        update.element_children.each do |child|
+          case [child.name, child.namespace]
+          in "set", { href: "DAV:" }
+            child.css("> d|prop > *", DAV_NSDECL).each do |prop|
+              xmlns = prop.namespace&.href || ""
+              xmlel = prop.name
+              value = prop.content
+
+              resources
+                .connection[:properties_user]
+                .insert_conflict(:replace)
+                .insert(rid: resource_id, xmlns:, xmlel:, value:)
+            end
+          in "remove", { href: "DAV:" }
+            scope = resources.connection[:properties_user]
+            child.css("> d|prop > *", DAV_NSDECL).each do |prop|
+              scope.or(rid: resource_id, xmlns: prop.namespace.href, xmlel: prop.name)
+            end
+
+            scope.delete
+            halt 204
+          else
+
+            halt 400
+          end
+        end
+      end
+
+      halt 201
+    end
+
     def propfind *args
-      halt 500
+      resource_id = resources.at_path(request_path.path).get(:id)
+      halt 404 if resource_id.nil?
+
+      depth = request.get_header("HTTP_DEPTH") || "infinity"
+      halt 400 unless DAV_DEPTHS.include? depth
+      depth = depth == "infinity" ? 1000000 : depth.to_i
+
+      # an empty body means allprop
+      body = request.body.gets
+      if (body.nil? || body == "")
+        return propfind_allprop(resource_id, depth:, root: nil)
+      end
+
+      # body must be declared xml (missing content type means we have to guess)
+      halt 415 unless request.content_type.nil? || request.content_type =~ /(text|application)\/xml/
+
+      # otherwise, it must be a well-formed xml doc
+      # which has a <DAV:propfind> element at the root
+      doc  = Nokogiri::XML.parse body rescue halt(400, $!.to_s)
+      root = doc.at_css("d|propfind:only-child", DAV_NSDECL)
+      halt 400 if root.nil?
+
+      allprop = root.at_css("d|allprop", DAV_NSDECL)
+      unless allprop.nil?
+        return propfind_allprop(resource_id, depth:, root:)
+      end
+
+      propname = root.at_css("d|propname", DAV_NSDECL)
+      unless propname.nil?
+        return propfind_propname(resource_id, depth:, root:, names: propname)
+      end
+
+      prop     = root.at_css("d|prop", DAV_NSDECL)
+      unless prop.nil?
+        return propfind_prop(resource_id, depth:, root:, props: prop)
+      end
+
+      # not sure what to do with this
+      halt 400
+    end
+
+    def propfind_allprop(rid, depth:, root:, **opts)
+      scope = resources.with_descendants(rid, depth:)
+                .join(resources.connection[:properties_all], rid: :id)
+
+
+
+      # separate by paths
+      values = Hash.new { |h, k| h[k] = [] }
+      scope.each do |row|
+        values[row[:fullpath]] << row
+      end 
+
+      # combine into the allprop response
+      builder   = Nokogiri::XML::Builder.new do |xml|
+        xml.multistatus(xmlns: "DAV:") {
+          values.each do |path, data|
+            xml.response {
+              xml.href path
+              xml.propstat {
+                xml.prop do
+                  data.each do |row|
+                    frag = Nokogiri::XML.fragment %Q[<#{row[:xmlel]} xmlns="#{row[:xmlns]}">#{row[:value]}</#{row[:xmlel]}>]
+                    xml << frag.to_xml
+                  end
+                end
+                xml.status "HTTP/1.1 200 OK"
+              }
+            }
+          end
+        }
+      end
+
+      puts builder.to_xml
+      halt 207, builder.to_xml
+    end
+
+    def propfind_propname rid, depth:, root:, names:
+      scope = resources.with_descendants(rid, depth:)
+                .join(resources.connection[:properties_all], rid: :id)
+                .select_all
+
+      # separate by paths
+      values = Hash.new { |h, k| h[k] = [] }
+      scope.each do |row|
+        values[row[:fullpath]] << row
+      end 
+
+      # combine into the allprop response
+      builder   = Nokogiri::XML::Builder.new do |xml|
+        xml.multistatus(xmlns: "DAV:") {
+          values.each do |path, data|
+            xml.response {
+              xml.href path
+              xml.propstat {
+                xml.prop do
+                  data.each do |row|
+                    frag = Nokogiri::XML.fragment %Q[<#{row[:xmlel]} xmlns="#{row[:xmlns]}" />]
+                    xml << frag.to_xml
+                  end
+                end
+                xml.status "HTTP/1.1 200 OK"
+              }
+            }
+          end
+        }
+      end
+
+      puts builder.to_xml
+      halt 207, builder.to_xml
+    end
+
+    def propfind_prop rid, depth:, root:, props:
+      scope = resources.with_descendants(rid, depth:)
+                .join(resources.connection[:properties_all], rid: :id)
+                .select_all
+                .where(Sequel.lit("1 = 0"))
+
+      debugger
+      props.element_children.each do |prop|
+        scope = scope.or(xmlns: prop.namespace&.href, xmlel: prop.name)
+      end
+
+      # separate by paths
+      values = Hash.new { |h, k| h[k] = [] }
+      scope.each do |row|
+        values[row[:fullpath]] << row
+      end 
+
+      # combine into the allprop response
+      builder   = Nokogiri::XML::Builder.new do |xml|
+        xml.multistatus(xmlns: "DAV:") {
+          values.each do |path, data|
+            xml.response {
+              xml.href path
+              xml.propstat {
+                xml.prop do
+                  data.each do |row|
+                    frag = Nokogiri::XML.fragment %Q[<#{row[:xmlel]} xmlns="#{row[:xmlns]}" />]
+                    xml << frag.to_xml
+                  end
+                end
+                xml.status "HTTP/1.1 200 OK"
+              }
+            }
+          end
+        }
+      end
+
+      puts builder.to_xml
+      halt 207, builder.to_xml
     end
 
     def propget *args

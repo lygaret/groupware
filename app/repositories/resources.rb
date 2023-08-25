@@ -3,6 +3,7 @@ module Repositories
     include App::Import["db.connection"]
 
     def resources = connection[:resources]
+    def properties = connection[:properties]
 
     COL_ID = Sequel[:resource_paths][:id]
     COL_FULLPATH = Sequel[:resource_paths][:fullpath]
@@ -20,6 +21,13 @@ module Repositories
               .where(Sequel[:resource_paths][:path] => path&.chomp("/")))
     end
 
+    def with_descendants(rid, depth:)
+      tree_descendants_cte(rid, depth)
+        .join(:resources, id: :id)
+        .select_all(:resources)
+        .select_append(Sequel[:desc][:path].as(:fullpath), :depth)
+    end
+
     def move_tree source_id, dest_id, name
       resources
         .where(id: source_id)
@@ -27,7 +35,7 @@ module Repositories
     end
 
     def clone_tree source_id, dest_id, name
-      clone_tree_preparedstmt
+      tree_clone_preparedstmt 
         .call(source_id: source_id, dest_id: dest_id, name: name)
     end
 
@@ -66,8 +74,25 @@ module Repositories
       data.merge(content: Sequel::SQL::Blob.new(data[:content]))
     end
 
-    def clone_tree_preparedstmt
-      @clone_tree_preparedstmt ||= connection[<<~SQL].prepare(:insert, :clone_tree)
+    def tree_descendants_cte root_id, depth
+      connection[:desc].with_recursive(:desc, 
+        connection[:resource_paths]
+          .select(:id, :path, Sequel[0].as(:depth))
+          .where(id: root_id),
+        connection[:resources]
+          .select(
+            Sequel[:resources][:id], 
+            Sequel[:desc][:fullpath] + "/" + Sequel[:resources][:path],
+            Sequel[:desc][:depth] + 1
+          )
+          .join(:desc, id: :pid)
+          .where(Sequel[:depth] <= depth),
+        args: [:id, :fullpath, :depth]
+      ).select_all(:desc)
+    end
+
+    def tree_clone_preparedstmt
+      @clone_tree_preparedstmt ||= connection[<<~SQL].prepare(:insert, :tree_clone)
         with 
         recursive cte_descendants as (
             -- base - root of the branch to copy (renamed)
