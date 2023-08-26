@@ -30,11 +30,6 @@ module Dav
       "repositories.resources"
     ]
 
-    include Methods::CopyMoveMethods
-    include Methods::GetHeadMethods
-    include Methods::PropFindPatchMethods
-    include Methods::PutDeleteMethods
-
     # override to retry on database locked errors
     def call!(...)
       attempted = false
@@ -54,6 +49,11 @@ module Dav
       response["Allow"] = OPTIONS_SUPPORTED_METHODS
       halt 204
     end
+
+    include Methods::CopyMoveMethods
+    include Methods::GetHeadMethods
+    include Methods::PropFindPatchMethods
+    include Methods::PutDeleteMethods
 
     private
 
