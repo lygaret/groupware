@@ -1,5 +1,5 @@
 #+TITLE: Tribeware
-#+OPTIONS: todo:t
+#+OPTIONS: todo:t html-checkbox-type:html
 
 Tribe is a calendar/contacts/notes sharing server for small, mostly trusted groups,
 like school-aged families, polycules and co-parenting groups.
