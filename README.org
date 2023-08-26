@@ -9,10 +9,34 @@ like school-aged families, polycules and co-parenting groups.
 - group can have members, which have more or less the same rights as each other
 - group can have non-members, which are first-class invitees etc, but don't have rights
 
-- CalDAV for calendars
-- CardDAV for contacts
 - WebDAV for shared file storage
     - notion like editor for these files, maybe just for markdown
+- CalDAV for calendars
+- CardDAV for contacts
 - Bot framework for ingest via chat
     - Telegram, SMS, Signal, WhatsApp?
     
+** status
+
+*** DONE webdav (resources + properties)
+*** TODO webdav (rework to newer rfc)
+*** TODO webdav (acl, principal, lock/unlock)
+*** TODO caldav (figure out storage for events, since we have to process ical as xml in some places)
+    
+** relevant rfcs
+
+- webdav
+    - https://datatracker.ietf.org/doc/html/rfc4918 - more recent version
+    - https://datatracker.ietf.org/doc/html/rfc2518 - original spec
+    - access control
+        - https://datatracker.ietf.org/doc/html/rfc3744 - general acl management
+        - https://datatracker.ietf.org/doc/html/rfc5397 - current principal query
+
+- caldav
+    - https://datatracker.ietf.org/doc/html/rfc4791.html
+
+- carddav
+    - https://datatracker.ietf.org/doc/html/rfc6352.html
+
+- 
+
