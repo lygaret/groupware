@@ -17,7 +17,7 @@ Sequel.migration do
         WITH property_cte (rid, xmlns, xmlel, value) AS (
                 SELECT res.id, 'DAV:', 'creationdate', res.created_at FROM resources res
           UNION SELECT res.id, 'DAV:', 'displayname', res.path FROM resources res        -- todo
-          UNION SELECT res.id, 'DAV:', 'resourcetype', CASE res.coll WHEN 1 THEN '<DAV:collection/>' ELSE NULL END FROM resources res
+          UNION SELECT res.id, 'DAV:', 'resourcetype', CASE res.coll WHEN 1 THEN '<collection/>' ELSE NULL END FROM resources res
           UNION SELECT res.id, 'DAV:', 'getcontentlanguage', 'en-US' FROM resources res  -- todo
           UNION SELECT res.id, 'DAV:', 'getcontentlength', res.length FROM resources res 
           UNION SELECT res.id, 'DAV:', 'getcontenttype', res.type FROM resources res

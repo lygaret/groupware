@@ -20,7 +20,7 @@ App::Container.register_provider(:database) do
             func.result = SecureRandom.uuid
           end
         end,
-      logger: target[:logger]
+      # logger: target[:logger]
     )
 
     register "db.connection", db

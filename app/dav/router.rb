@@ -1,6 +1,7 @@
 require "time"
 require "nokogiri"
 require "pp"
+require "rack/mime"
 
 require "ioutil/md5_reader"
 require "http/method_router"
@@ -83,13 +84,14 @@ module Dav
     end
 
     def put_update resource_id
-      len = Integer(request.content_length)
-      body = IOUtil::MD5Reader.new request.body
+      len     = Integer(request.content_length)
+      body    = IOUtil::MD5Reader.new request.body
       content = body.read(len) # hashes as a side effect
+      type    = request.content_type || Rack::Mime.mime_type(File.extname request_path.name)
 
       resources.update(
         id: resource_id,
-        type: request.content_type,
+        type: type,
         length: len,
         content: content,
         etag: body.hash
@@ -106,14 +108,15 @@ module Dav
         halt 409 unless parent[:coll]
 
         # read the body from the request
-        len  = Integer(request.content_length)
+        len  = request.content_length.nil? ? 0 : Integer(request.content_length)
         body = IOUtil::MD5Reader.new request.body
         content = body.read(len) # hashes as a side effect
+        type = request.content_type || Rack::Mime.mime_type(File.extname request_path.name)
 
         resources.insert(
           pid: parent[:id], 
           path: request_path.name,
-          type: request.content_type,
+          type: type,
           length: len,
           content: content,
           etag: body.hash
@@ -230,13 +233,12 @@ module Dav
                 .insert(rid: resource_id, xmlns:, xmlel:, value:)
             end
           in "remove", { href: "DAV:" }
-            scope = resources.connection[:properties_user]
+            scope = resources.connection[:properties_user].where(Sequel.lit("1 = 0"))
             child.css("> d|prop > *", DAV_NSDECL).each do |prop|
-              scope.or(rid: resource_id, xmlns: prop.namespace.href, xmlel: prop.name)
+              scope = scope.or(rid: resource_id, xmlns: prop.namespace.href, xmlel: prop.name)
             end
 
             scope.delete
-            halt 204
           else
 
             halt 400
@@ -291,9 +293,8 @@ module Dav
 
     def propfind_allprop(rid, depth:, root:, **opts)
       scope = resources.with_descendants(rid, depth:)
-                .join(resources.connection[:properties_all], rid: :id)
-
-
+                .join_table(:left_outer, :properties_all, rid: :id)
+                .select_all(:properties_all).select_append(:fullpath)
 
       # separate by paths
       values = Hash.new { |h, k| h[k] = [] }
@@ -302,33 +303,41 @@ module Dav
       end 
 
       # combine into the allprop response
-      builder   = Nokogiri::XML::Builder.new do |xml|
-        xml.multistatus(xmlns: "DAV:") {
+      builder = Nokogiri::XML::Builder.new do |xml|
+        xml["d"].multistatus("xmlns:d" => "DAV:") {
           values.each do |path, data|
-            xml.response {
-              xml.href path
-              xml.propstat {
-                xml.prop do
+            xml["d"].response {
+              xml["d"].href path
+              xml["d"].propstat {
+                xml["d"].prop do
                   data.each do |row|
-                    frag = Nokogiri::XML.fragment %Q[<#{row[:xmlel]} xmlns="#{row[:xmlns]}">#{row[:value]}</#{row[:xmlel]}>]
-                    xml << frag.to_xml
+                    if row[:xmlns] == "DAV:"
+                      xml["d"].send(row[:xmlel]) { xml << row[:value].to_s }
+                    else
+                      xml.send(row[:xmlel], xmlns: row[:xmlns]) { xml << row[:value].to_s }
+                    end
                   end
                 end
-                xml.status "HTTP/1.1 200 OK"
+                xml["d"].status "HTTP/1.1 200 OK"
               }
             }
           end
         }
       end
 
-      puts builder.to_xml
+      # puts "PROPFIND ALLPROP depth:#{depth}"
+      # puts root
+      # puts "resp------------------"
+      # puts builder.to_xml
+      # puts "----------------------"
+
       halt 207, builder.to_xml
     end
 
     def propfind_propname rid, depth:, root:, names:
       scope = resources.with_descendants(rid, depth:)
-                .join(resources.connection[:properties_all], rid: :id)
-                .select_all
+                .join_table(:left_outer, :properties_all, rid: :id)
+                .select_all(:properties_all).select_append(:fullpath)
 
       # separate by paths
       values = Hash.new { |h, k| h[k] = [] }
@@ -338,66 +347,108 @@ module Dav
 
       # combine into the allprop response
       builder   = Nokogiri::XML::Builder.new do |xml|
-        xml.multistatus(xmlns: "DAV:") {
+        xml["d"].multistatus("xmlns:d" => "DAV:") {
           values.each do |path, data|
-            xml.response {
-              xml.href path
-              xml.propstat {
-                xml.prop do
+            xml["d"].response {
+              xml["d"].href path
+              xml["d"].propstat {
+                xml["d"].prop do
                   data.each do |row|
-                    frag = Nokogiri::XML.fragment %Q[<#{row[:xmlel]} xmlns="#{row[:xmlns]}" />]
-                    xml << frag.to_xml
+                    if row[:xmlns] == "DAV:"
+                      xml["d"].send(row[:xmlel])
+                    else
+                      xml.send(row[:xmlel], xmlns: row[:xmlns])
+                    end
                   end
                 end
-                xml.status "HTTP/1.1 200 OK"
+                xml["d"].status "HTTP/1.1 200 OK"
               }
             }
           end
         }
       end
 
-      puts builder.to_xml
+      # puts "PROPFIND NAMES (depth #{depth})"
+      # puts names
+      # puts "resp------------------"
+      # puts builder.to_xml
+      # puts "----------------------"
+
       halt 207, builder.to_xml
     end
 
     def propfind_prop rid, depth:, root:, props:
-      scope = resources.with_descendants(rid, depth:)
-                .join(resources.connection[:properties_all], rid: :id)
-                .select_all
+      desc  = resources.with_descendants(rid, depth:)
+      scope = desc 
+                .join_table(:left_outer, :properties_all, rid: :id)
+                .select_all(:properties_all).select_append(:fullpath)
                 .where(Sequel.lit("1 = 0"))
 
-      debugger
+      expected = []
       props.element_children.each do |prop|
-        scope = scope.or(xmlns: prop.namespace&.href, xmlel: prop.name)
+        expected << prop
+        scope = scope.or(xmlns: prop.namespace&.href || "", xmlel: prop.name)
       end
 
-      # separate by paths
-      values = Hash.new { |h, k| h[k] = [] }
+      # need a path element in values for every child
+      values = Hash.new { |h,k| h[k] = [] }
+      scope.select(:fullpath).each do |row|
+        values[row[:fullpath]] = []
+      end
+
+      # add the properties we've found
       scope.each do |row|
         values[row[:fullpath]] << row
       end 
 
       # combine into the allprop response
       builder   = Nokogiri::XML::Builder.new do |xml|
-        xml.multistatus(xmlns: "DAV:") {
+        xml["d"].multistatus("xmlns:d" => "DAV:") {
           values.each do |path, data|
-            xml.response {
-              xml.href path
-              xml.propstat {
-                xml.prop do
-                  data.each do |row|
-                    frag = Nokogiri::XML.fragment %Q[<#{row[:xmlel]} xmlns="#{row[:xmlns]}" />]
-                    xml << frag.to_xml
-                  end
-                end
-                xml.status "HTTP/1.1 200 OK"
-              }
+            xml["d"].response {
+              xml["d"].href path
+
+              missing = expected.dup
+
+              # found keys
+              unless data.empty?
+                xml["d"].propstat {
+                  xml["d"].prop {
+                    data.each do |row|
+                      missing.reject! { |p| ((p.namespace&.href == row[:xmlns]) || ("" == row[:xmlns])) && (p.name == row[:xmlel]) }
+
+                      if row[:xmlns] == "DAV:"
+                        xml["d"].send(row[:xmlel]) { xml << row[:value].to_s }
+                      else
+                        xml.send(row[:xmlel], xmlns: row[:xmlns]) { xml << row[:value].to_s }
+                      end
+                    end
+                  }
+                  xml["d"].status "HTTP/1.1 200 OK"
+                }
+              end
+
+              unless missing.empty?
+                xml["d"].propstat {
+                  xml["d"].prop {
+                    missing.each do |prop|
+                      xml.send(prop.name, xmlns: prop.namespace&.href || "")
+                    end
+                  }
+                  xml["d"].status "HTTP/1.1 404 Not Found"
+                }
+              end
             }
           end
         }
       end
 
-      puts builder.to_xml
+      # puts "PROPFIND PROPS (depth #{depth})"
+      # puts props
+      # puts "resp------------------"
+      # puts builder.to_xml
+      # puts "----------------------"
+
       halt 207, builder.to_xml
     end
 

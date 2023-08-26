@@ -25,7 +25,7 @@ module Repositories
       tree_descendants_cte(rid, depth)
         .join(:resources, id: :id)
         .select_all(:resources)
-        .select_append(Sequel[:desc][:path].as(:fullpath), :depth)
+        .select_append(:fullpath, :depth)
     end
 
     def move_tree source_id, dest_id, name
@@ -85,10 +85,11 @@ module Repositories
             Sequel[:desc][:fullpath] + "/" + Sequel[:resources][:path],
             Sequel[:desc][:depth] + 1
           )
-          .join(:desc, id: :pid)
-          .where(Sequel[:depth] <= depth),
+          .where(Sequel[:depth] < depth)
+          .join(:desc, id: :pid),
         args: [:id, :fullpath, :depth]
-      ).select_all(:desc)
+      )
+        .select_all(:desc)
     end
 
     def tree_clone_preparedstmt
