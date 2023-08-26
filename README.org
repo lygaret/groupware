@@ -19,10 +19,10 @@ like school-aged families, polycules and co-parenting groups.
     
 * status
 
-** DONE webdav (resources + properties)
-** TODO webdav (rework to newer rfc)
-** TODO webdav (acl, principal, lock/unlock)
-** TODO caldav (figure out storage for events, since we have to process ical as xml in some places)
+- [x] webdav (resources + properties)
+- [ ] webdav (rework to newer rfc)
+- [ ] webdav (acl, principal, lock/unlock)
+- [ ] caldav (figure out storage for events, since we have to process ical as xml in some places)
     
 * relevant rfcs
 
