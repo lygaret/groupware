@@ -7,7 +7,22 @@ require "ioutil/md5_reader"
 require "http/method_router"
 require "http/request_path"
 
+require_relative "./methods/copy_move"
+require_relative "./methods/get_head"
+require_relative "./methods/prop_find_patch"
+require_relative "./methods/put_delete"
+
 module Dav
+
+  DAV_NSDECL = { d: "DAV:" }
+  DAV_DEPTHS = %w[infinity 0 1]
+
+  OPTIONS_SUPPORTED_METHODS = %w[
+    OPTIONS HEAD GET PUT DELETE
+    MKCOL COPY MOVE LOCK UNLOCK 
+    PROPFIND PROPPATCH
+  ].join ","
+
   class Router < Http::MethodRouter
 
     include App::Import[
@@ -15,22 +30,10 @@ module Dav
       "repositories.resources"
     ]
 
-    attr_reader :request_path
-
-    DAV_NSDECL = { d: "DAV:" }
-    DAV_DEPTHS = %w[infinity 0 1]
-
-    OPTIONS_SUPPORTED_METHODS = %w[
-      OPTIONS HEAD GET PUT DELETE
-      MKCOL COPY MOVE LOCK UNLOCK 
-      PROPFIND PROPPATCH
-    ].join ","
-
-    def before_req
-      super
-
-      @request_path = Http::RequestPath.from_path @request.path_info
-    end
+    include Methods::CopyMoveMethods
+    include Methods::GetHeadMethods
+    include Methods::PropFindPatchMethods
+    include Methods::PutDeleteMethods
 
     # override to retry on database locked errors
     def call!(...)
@@ -49,415 +52,21 @@ module Dav
 
     def options *args
       response["Allow"] = OPTIONS_SUPPORTED_METHODS
-      ""
-    end
-
-    def head(...)
-      get(...) # sets headers and throws
-      ""       # but don't include a body in head requests
-    end
-
-    def get *args
-      resource = resources.at_path(request_path.path).first
-
-      halt 404 if resource.nil?
-      halt 202 if resource[:coll] == 1 # no content for collections
-
-      headers = {
-        "Content-Length" => resource[:length].to_s,
-        "Content-Type"   => resource[:type],
-        "Last-Modified"  => resource[:updated_at] || resource[:created_at],
-        "ETag"           => resource[:etag]
-      }.reject { |k, v| v.nil? }
-      response.headers.merge! headers
-
-      [resource[:content].to_str]
-    end
-
-    def put *args
-      resource_id = resources.at_path(request_path.path).get(:id)
-      if resource_id.nil?
-        put_insert
-      else
-        put_update resource_id
-      end
-    end
-
-    def put_update resource_id
-      len     = Integer(request.content_length)
-      body    = IOUtil::MD5Reader.new request.body
-      content = body.read(len) # hashes as a side effect
-      type    = request.content_type || Rack::Mime.mime_type(File.extname request_path.name)
-
-      resources.update(
-        id: resource_id,
-        type: type,
-        length: len,
-        content: content,
-        etag: body.hash
-      )
-
-      halt 204 # no content
-    end
-
-    def put_insert
-      resources.connection.transaction do
-        # conflict if the parent doesn't exist (or isn't a collection)
-        parent = resources.at_path(request_path.parent).select(:id, :coll).first
-        halt 404 if parent.nil?
-        halt 409 unless parent[:coll]
-
-        # read the body from the request
-        len  = request.content_length.nil? ? 0 : Integer(request.content_length)
-        body = IOUtil::MD5Reader.new request.body
-        content = body.read(len) # hashes as a side effect
-        type = request.content_type || Rack::Mime.mime_type(File.extname request_path.name)
-
-        resources.insert(
-          pid: parent[:id], 
-          path: request_path.name,
-          type: type,
-          length: len,
-          content: content,
-          etag: body.hash
-        )
-        halt 201 # created
-      end
-    end
-
-    def delete *args
-      res_id = resources.at_path(request_path.path).select(:id).get(:id)
-      halt 404 if res_id.nil?
-
-      resources.delete(id: res_id)
       halt 204
     end
 
-    def mkcol *args
-      # mkcol w/ body is unsupported
-      halt 415 if request.content_length
-      halt 415 if request.media_type
+    private
 
-      resources.connection.transaction do
-        # not allowed if already exists RFC2518 8.3.2
-        halt 405 unless resources.at_path(request_path.path).empty?
-
-        # conflict if the parent doesn't exist (or isn't a collection)
-        parent = resources.at_path(request_path.parent).select(:id, :coll).first
-
-        halt 409 if parent.nil?
-        halt 409 unless parent[:coll]
-
-        # otherwise, insert!
-        resources.insert(
-          pid: parent[:id],
-          path: request_path.name,
-          coll: true
-        )
-      end
-
-      halt 201 # created
+    def request_path
+      @request_path ||= Http::RequestPath.from_path request.path_info
     end
 
-    def post(*args) = halt 405 # method not supported
-
-    def copy(*args) = copy_move clone: true
-
-    def move(*args) = copy_move clone: false
-
-    def copy_move clone:
-      # destination needs to be present, and local
-
-      destination = request.get_header "HTTP_DESTINATION"
-      halt 400 if destination.nil?
-      halt 400 unless destination.delete_prefix!(request.base_url)
-      halt 400 unless destination.delete_prefix!(request.script_name) || request.script_name == ""
-
-      destination = Http::RequestPath.from_path destination
-      resources.connection.transaction do
-        source = resources.at_path(request_path.path).first
-        halt 404 if source.nil?
-
-        # fetch the parent collection of the destination
-        # conflict if the parent doesn't exist (or isn't a collection)
-        parent = resources.at_path(destination.parent).select(:id, :coll).first
-        halt 409 if parent.nil?
-        halt 409 unless parent[:coll]
-
-        # overwrititng
-        extant = resources.at_path(destination.path).select(:id).first
-        if !extant.nil?
-          overwrite = request.get_header("HTTP_OVERWRITE")&.downcase
-          halt 412 unless overwrite == "t"
-
-          resources.delete(id: extant[:id])
-        end
-
-        # now we can copy / move
-        if clone
-          resources.clone_tree source[:id], parent[:id], destination.name
-        else 
-          resources.move_tree source[:id], parent[:id], destination.name
-        end
-
-        halt(extant.nil? ? 201 : 204)
-      end
+    def request_content_length
+        request.content_length.nil? ? 0 : Integer(request.content_length)
     end
 
-    def proppatch *args
-      resource_id = resources.at_path(request_path.path).get(:id)
-      halt 404 if resource_id.nil?
-
-      # body must be declared xml (missing content type means we have to guess)
-      halt 415 unless request.content_type.nil? || request.content_type =~ /(text|application)\/xml/
-
-      # body must be a valid propertyupdate element
-      body   = request.body.gets
-      doc    = Nokogiri::XML.parse body rescue halt(400, $!.to_s)
-      update = doc.at_css("d|propertyupdate:only-child", DAV_NSDECL)
-      halt 415 if update.nil?
-
-      # handle the (set|remove)+ in the update children in order
-      resources.connection.transaction do
-        update.element_children.each do |child|
-          case [child.name, child.namespace]
-          in "set", { href: "DAV:" }
-            child.css("> d|prop > *", DAV_NSDECL).each do |prop|
-              xmlns = prop.namespace&.href || ""
-              xmlel = prop.name
-              value = prop.content
-
-              resources
-                .connection[:properties_user]
-                .insert_conflict(:replace)
-                .insert(rid: resource_id, xmlns:, xmlel:, value:)
-            end
-          in "remove", { href: "DAV:" }
-            scope = resources.connection[:properties_user].where(Sequel.lit("1 = 0"))
-            child.css("> d|prop > *", DAV_NSDECL).each do |prop|
-              scope = scope.or(rid: resource_id, xmlns: prop.namespace.href, xmlel: prop.name)
-            end
-
-            scope.delete
-          else
-
-            halt 400
-          end
-        end
-      end
-
-      halt 201
-    end
-
-    def propfind *args
-      resource_id = resources.at_path(request_path.path).get(:id)
-      halt 404 if resource_id.nil?
-
-      depth = request.get_header("HTTP_DEPTH") || "infinity"
-      halt 400 unless DAV_DEPTHS.include? depth
-      depth = depth == "infinity" ? 1000000 : depth.to_i
-
-      # an empty body means allprop
-      body = request.body.gets
-      if (body.nil? || body == "")
-        return propfind_allprop(resource_id, depth:, root: nil)
-      end
-
-      # body must be declared xml (missing content type means we have to guess)
-      halt 415 unless request.content_type.nil? || request.content_type =~ /(text|application)\/xml/
-
-      # otherwise, it must be a well-formed xml doc
-      # which has a <DAV:propfind> element at the root
-      doc  = Nokogiri::XML.parse body rescue halt(400, $!.to_s)
-      root = doc.at_css("d|propfind:only-child", DAV_NSDECL)
-      halt 400 if root.nil?
-
-      allprop = root.at_css("d|allprop", DAV_NSDECL)
-      unless allprop.nil?
-        return propfind_allprop(resource_id, depth:, root:)
-      end
-
-      propname = root.at_css("d|propname", DAV_NSDECL)
-      unless propname.nil?
-        return propfind_propname(resource_id, depth:, root:, names: propname)
-      end
-
-      prop     = root.at_css("d|prop", DAV_NSDECL)
-      unless prop.nil?
-        return propfind_prop(resource_id, depth:, root:, props: prop)
-      end
-
-      # not sure what to do with this
-      halt 400
-    end
-
-    def propfind_allprop(rid, depth:, root:, **opts)
-      scope = resources.with_descendants(rid, depth:)
-                .join_table(:left_outer, :properties_all, rid: :id)
-                .select_all(:properties_all).select_append(:fullpath)
-
-      # separate by paths
-      values = Hash.new { |h, k| h[k] = [] }
-      scope.each do |row|
-        values[row[:fullpath]] << row
-      end 
-
-      # combine into the allprop response
-      builder = Nokogiri::XML::Builder.new do |xml|
-        xml["d"].multistatus("xmlns:d" => "DAV:") {
-          values.each do |path, data|
-            xml["d"].response {
-              xml["d"].href path
-              xml["d"].propstat {
-                xml["d"].prop do
-                  data.each do |row|
-                    if row[:xmlns] == "DAV:"
-                      xml["d"].send(row[:xmlel]) { xml << row[:value].to_s }
-                    else
-                      xml.send(row[:xmlel], xmlns: row[:xmlns]) { xml << row[:value].to_s }
-                    end
-                  end
-                end
-                xml["d"].status "HTTP/1.1 200 OK"
-              }
-            }
-          end
-        }
-      end
-
-      # puts "PROPFIND ALLPROP depth:#{depth}"
-      # puts root
-      # puts "resp------------------"
-      # puts builder.to_xml
-      # puts "----------------------"
-
-      halt 207, builder.to_xml
-    end
-
-    def propfind_propname rid, depth:, root:, names:
-      scope = resources.with_descendants(rid, depth:)
-                .join_table(:left_outer, :properties_all, rid: :id)
-                .select_all(:properties_all).select_append(:fullpath)
-
-      # separate by paths
-      values = Hash.new { |h, k| h[k] = [] }
-      scope.each do |row|
-        values[row[:fullpath]] << row
-      end 
-
-      # combine into the allprop response
-      builder   = Nokogiri::XML::Builder.new do |xml|
-        xml["d"].multistatus("xmlns:d" => "DAV:") {
-          values.each do |path, data|
-            xml["d"].response {
-              xml["d"].href path
-              xml["d"].propstat {
-                xml["d"].prop do
-                  data.each do |row|
-                    if row[:xmlns] == "DAV:"
-                      xml["d"].send(row[:xmlel])
-                    else
-                      xml.send(row[:xmlel], xmlns: row[:xmlns])
-                    end
-                  end
-                end
-                xml["d"].status "HTTP/1.1 200 OK"
-              }
-            }
-          end
-        }
-      end
-
-      # puts "PROPFIND NAMES (depth #{depth})"
-      # puts names
-      # puts "resp------------------"
-      # puts builder.to_xml
-      # puts "----------------------"
-
-      halt 207, builder.to_xml
-    end
-
-    def propfind_prop rid, depth:, root:, props:
-      desc  = resources.with_descendants(rid, depth:)
-      scope = desc 
-                .join_table(:left_outer, :properties_all, rid: :id)
-                .select_all(:properties_all).select_append(:fullpath)
-                .where(Sequel.lit("1 = 0"))
-
-      expected = []
-      props.element_children.each do |prop|
-        expected << prop
-        scope = scope.or(xmlns: prop.namespace&.href || "", xmlel: prop.name)
-      end
-
-      # need a path element in values for every child
-      values = Hash.new { |h,k| h[k] = [] }
-      scope.select(:fullpath).each do |row|
-        values[row[:fullpath]] = []
-      end
-
-      # add the properties we've found
-      scope.each do |row|
-        values[row[:fullpath]] << row
-      end 
-
-      # combine into the allprop response
-      builder   = Nokogiri::XML::Builder.new do |xml|
-        xml["d"].multistatus("xmlns:d" => "DAV:") {
-          values.each do |path, data|
-            xml["d"].response {
-              xml["d"].href path
-
-              missing = expected.dup
-
-              # found keys
-              unless data.empty?
-                xml["d"].propstat {
-                  xml["d"].prop {
-                    data.each do |row|
-                      missing.reject! { |p| ((p.namespace&.href == row[:xmlns]) || ("" == row[:xmlns])) && (p.name == row[:xmlel]) }
-
-                      if row[:xmlns] == "DAV:"
-                        xml["d"].send(row[:xmlel]) { xml << row[:value].to_s }
-                      else
-                        xml.send(row[:xmlel], xmlns: row[:xmlns]) { xml << row[:value].to_s }
-                      end
-                    end
-                  }
-                  xml["d"].status "HTTP/1.1 200 OK"
-                }
-              end
-
-              unless missing.empty?
-                xml["d"].propstat {
-                  xml["d"].prop {
-                    missing.each do |prop|
-                      xml.send(prop.name, xmlns: prop.namespace&.href || "")
-                    end
-                  }
-                  xml["d"].status "HTTP/1.1 404 Not Found"
-                }
-              end
-            }
-          end
-        }
-      end
-
-      # puts "PROPFIND PROPS (depth #{depth})"
-      # puts props
-      # puts "resp------------------"
-      # puts builder.to_xml
-      # puts "----------------------"
-
-      halt 207, builder.to_xml
-    end
-
-    def propget *args
-      halt 500
-    end
-
-    def propmove *args
-      halt 500
+    def request_content_type
+        request.content_type || Rack::Mime.mime_type(File.extname request_path.name)
     end
 
   end
