@@ -1,9 +1,10 @@
-* tribe
+#+TITLE: Tribeware
+#+OPTIONS: todo:t
 
 Tribe is a calendar/contacts/notes sharing server for small, mostly trusted groups,
 like school-aged families, polycules and co-parenting groups.
 
-** technical
+* technical
 
 - an instance manages a single group, this isn't intended as SaaS
 - group can have members, which have more or less the same rights as each other
@@ -16,14 +17,14 @@ like school-aged families, polycules and co-parenting groups.
 - Bot framework for ingest via chat
     - Telegram, SMS, Signal, WhatsApp?
     
-** status
+* status
 
-*** DONE webdav (resources + properties)
-*** TODO webdav (rework to newer rfc)
-*** TODO webdav (acl, principal, lock/unlock)
-*** TODO caldav (figure out storage for events, since we have to process ical as xml in some places)
+** DONE webdav (resources + properties)
+** TODO webdav (rework to newer rfc)
+** TODO webdav (acl, principal, lock/unlock)
+** TODO caldav (figure out storage for events, since we have to process ical as xml in some places)
     
-** relevant rfcs
+* relevant rfcs
 
 - webdav
     - https://datatracker.ietf.org/doc/html/rfc4918 - more recent version
@@ -37,6 +38,3 @@ like school-aged families, polycules and co-parenting groups.
 
 - carddav
     - https://datatracker.ietf.org/doc/html/rfc6352.html
-
-- 
-
