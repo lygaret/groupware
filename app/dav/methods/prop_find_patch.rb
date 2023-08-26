@@ -1,3 +1,5 @@
+require 'json'
+
 module Dav
   module Methods
     module PropFindPatchMethods
@@ -88,14 +90,15 @@ module Dav
 
       def proppatch_set resource_id, setel
         setel.css("> d|prop > *", DAV_NSDECL).each do |prop|
-          xmlns = prop.namespace&.href || ""
-          xmlel = prop.name
-          value = prop.content
+          xmlns    = prop.namespace&.href || ""
+          xmlel    = prop.name
+          xmlattrs = JSON.dump prop.attributes.to_a
+          content  = Nokogiri::XML.fragment(prop.children, DAV_NSDECL).to_xml
 
           resources
             .connection[:properties_user]
             .insert_conflict(:replace)
-            .insert(rid: resource_id, xmlns:, xmlel:, value:)
+            .insert(rid: resource_id, xmlns:, xmlel:, xmlattrs:, content:)
         end
       end
 
@@ -116,24 +119,30 @@ module Dav
                   .select_all(:properties_all).select_append(:fullpath)
 
         # separate by paths
-        values = Hash.new { |h, k| h[k] = [] }
+        contents = Hash.new { |h, k| h[k] = [] }
         scope.each do |row|
-          values[row[:fullpath]] << row
+          contents[row[:fullpath]] << row
         end 
 
         # combine into the allprop response
         builder = Nokogiri::XML::Builder.new do |xml|
           xml["d"].multistatus("xmlns:d" => "DAV:") {
-            values.each do |path, data|
+            contents.each do |path, data|
               xml["d"].response {
                 xml["d"].href path
                 xml["d"].propstat {
                   xml["d"].prop do
                     data.each do |row|
+                      attrs = Hash.new(JSON.load(row[:xmlattrs]))
                       if row[:xmlns] == "DAV:"
-                        xml["d"].send(row[:xmlel]) { xml << row[:value].to_s }
+                        xml["d"].send(row[:xmlel], **attrs) do 
+                          xml.send(:insert, Nokogiri::XML.fragment(row[:content]))
+                        end
                       else
-                        xml.send(row[:xmlel], xmlns: row[:xmlns]) { xml << row[:value].to_s }
+                        attrs.merge! xmlns: row[:xmlns]
+                        xml.send(row[:xmlel], **attrs) do 
+                          xml.send(:insert, Nokogiri::XML.fragment(row[:content]))
+                        end
                       end
                     end
                   end
@@ -159,15 +168,15 @@ module Dav
                   .select_all(:properties_all).select_append(:fullpath)
 
         # separate by paths
-        values = Hash.new { |h, k| h[k] = [] }
+        contents = Hash.new { |h, k| h[k] = [] }
         scope.each do |row|
-          values[row[:fullpath]] << row
+          contents[row[:fullpath]] << row
         end 
 
         # combine into the allprop response
         builder   = Nokogiri::XML::Builder.new do |xml|
           xml["d"].multistatus("xmlns:d" => "DAV:") {
-            values.each do |path, data|
+            contents.each do |path, data|
               xml["d"].response {
                 xml["d"].href path
                 xml["d"].propstat {
@@ -209,37 +218,47 @@ module Dav
           scope = scope.or(xmlns: prop.namespace&.href || "", xmlel: prop.name)
         end
 
-        # need a path element in values for every child
-        values = Hash.new { |h,k| h[k] = [] }
+        # need a path element in contents for every child
+        contents = Hash.new { |h,k| h[k] = [] }
         scope.select(:fullpath).each do |row|
-          values[row[:fullpath]] = []
+          contents[row[:fullpath]] = []
         end
 
         # add the properties we've found
         scope.each do |row|
-          values[row[:fullpath]] << row
+          contents[row[:fullpath]] << row
         end 
 
         # combine into the allprop response
         builder   = Nokogiri::XML::Builder.new do |xml|
           xml["d"].multistatus("xmlns:d" => "DAV:") {
-            values.each do |path, data|
+            contents.each do |path, data|
+              missing = expected.dup
+
               xml["d"].response {
                 xml["d"].href path
-
-                missing = expected.dup
 
                 # found keys
                 unless data.empty?
                   xml["d"].propstat {
                     xml["d"].prop {
                       data.each do |row|
-                        missing.reject! { |p| ((p.namespace&.href == row[:xmlns]) || ("" == row[:xmlns])) && (p.name == row[:xmlel]) }
+                        # remove matched properties from the set
+                        # track missing so we can report 404 on the others
+                        missing.reject! do |p| 
+                          ((p.namespace&.href == row[:xmlns]) || ("" == row[:xmlns])) && (p.name == row[:xmlel])
+                        end
 
+                        attrs = Hash.new(JSON.load(row[:xmlattrs]))
                         if row[:xmlns] == "DAV:"
-                          xml["d"].send(row[:xmlel]) { xml << row[:value].to_s }
+                          xml["d"].send(row[:xmlel], **attrs) {
+                            xml.send(:insert, Nokogiri::XML.fragment(row[:content]))
+                          }
                         else
-                          xml.send(row[:xmlel], xmlns: row[:xmlns]) { xml << row[:value].to_s }
+                          attrs.merge!(xmlns: row[:xmlns])
+                          xml.send(row[:xmlel], **attrs) {
+                            xml.send(:insert, Nokogiri::XML.fragment(row[:content]))
+                          }
                         end
                       end
                     }
