@@ -54,6 +54,7 @@ module Dav
         halt 415 if update.nil?
 
         # handle the (set|remove)+ in the update children in order
+        # this is a SPEC ENFORCED n+1 QUERY, because we need to handle a set/remove pair on the same resource
         resources.connection.transaction do
           update.element_children.each do |child|
             case child
@@ -93,7 +94,7 @@ module Dav
           xmlns    = prop.namespace&.href || ""
           xmlel    = prop.name
           xmlattrs = JSON.dump prop.attributes.to_a
-          content  = Nokogiri::XML.fragment(prop.children, DAV_NSDECL).to_xml
+          content  = Nokogiri::XML.fragment(prop.children).to_xml
 
           resources
             .connection[:properties_user]
@@ -127,27 +128,12 @@ module Dav
         # combine into the allprop response
         builder = Nokogiri::XML::Builder.new do |xml|
           xml["d"].multistatus("xmlns:d" => "DAV:") {
-            contents.each do |path, data|
+            contents.each do |path, props|
               xml["d"].response {
                 xml["d"].href path
-                xml["d"].propstat {
-                  xml["d"].prop do
-                    data.each do |row|
-                      attrs = Hash.new(JSON.load(row[:xmlattrs]))
-                      if row[:xmlns] == "DAV:"
-                        xml["d"].send(row[:xmlel], **attrs) do 
-                          xml.send(:insert, Nokogiri::XML.fragment(row[:content]))
-                        end
-                      else
-                        attrs.merge! xmlns: row[:xmlns]
-                        xml.send(row[:xmlel], **attrs) do 
-                          xml.send(:insert, Nokogiri::XML.fragment(row[:content]))
-                        end
-                      end
-                    end
-                  end
-                  xml["d"].status "HTTP/1.1 200 OK"
-                }
+                render_propstat(xml:, status: "200 OK", props:) do |row|
+                  render_row xml:, row:, shallow: false
+                end
               }
             end
           }
@@ -176,21 +162,12 @@ module Dav
         # combine into the allprop response
         builder   = Nokogiri::XML::Builder.new do |xml|
           xml["d"].multistatus("xmlns:d" => "DAV:") {
-            contents.each do |path, data|
+            contents.each do |path, props|
               xml["d"].response {
                 xml["d"].href path
-                xml["d"].propstat {
-                  xml["d"].prop do
-                    data.each do |row|
-                      if row[:xmlns] == "DAV:"
-                        xml["d"].send(row[:xmlel])
-                      else
-                        xml.send(row[:xmlel], xmlns: row[:xmlns])
-                      end
-                    end
-                  end
-                  xml["d"].status "HTTP/1.1 200 OK"
-                }
+                render_propstat(xml:, status: "200 OK", props:) do |row|
+                  render_row xml:, row:, shallow: true
+                end
               }
             end
           }
@@ -206,75 +183,58 @@ module Dav
       end
 
       def propfind_prop rid, depth:, root:, props:
-        desc  = resources.with_descendants(rid, depth:)
-        scope = desc 
-                  .join_table(:left_outer, :properties_all, rid: :id)
-                  .select_all(:properties_all).select_append(:fullpath)
-                  .where(Sequel.lit("1 = 0"))
+        desc    = resources.with_descendants(rid, depth:)
+        dbprops = resources.connection[:properties_all].where(false)
 
+        # collect the expected children
+        # reducing the dbprops scope with `ORs` along the way
         expected = []
         props.element_children.each do |prop|
           expected << prop
-          scope = scope.or(xmlns: prop.namespace&.href || "", xmlel: prop.name)
+          dbprops = dbprops.or(xmlns: prop.namespace&.href || "", xmlel: prop.name)
         end
+
+        # scope now is a left outer join (all the resources, prop cols are nil if missing)
+        scope = desc
+          .join_table(:left_outer, dbprops, { rid: :id }, table_alias: :props)
+          .select_all(:props).select_append(:fullpath)
 
         # need a path element in contents for every child
         contents = Hash.new { |h,k| h[k] = [] }
-        scope.select(:fullpath).each do |row|
-          contents[row[:fullpath]] = []
-        end
-
-        # add the properties we've found
         scope.each do |row|
+          contents[row[:fullpath]] ||= []
+          next if row[:xmlel].nil? # no property found
+
           contents[row[:fullpath]] << row
         end 
 
         # combine into the allprop response
         builder   = Nokogiri::XML::Builder.new do |xml|
           xml["d"].multistatus("xmlns:d" => "DAV:") {
-            contents.each do |path, data|
+            contents.each do |path, props|
               missing = expected.dup
 
               xml["d"].response {
                 xml["d"].href path
 
                 # found keys
-                unless data.empty?
-                  xml["d"].propstat {
-                    xml["d"].prop {
-                      data.each do |row|
-                        # remove matched properties from the set
-                        # track missing so we can report 404 on the others
-                        missing.reject! do |p| 
-                          ((p.namespace&.href == row[:xmlns]) || ("" == row[:xmlns])) && (p.name == row[:xmlel])
-                        end
+                unless props.empty?
+                  render_propstat(xml:, status: "200 OK", props:) do |row|
+                    render_row xml:, row:, shallow: false
 
-                        attrs = Hash.new(JSON.load(row[:xmlattrs]))
-                        if row[:xmlns] == "DAV:"
-                          xml["d"].send(row[:xmlel], **attrs) {
-                            xml.send(:insert, Nokogiri::XML.fragment(row[:content]))
-                          }
-                        else
-                          attrs.merge!(xmlns: row[:xmlns])
-                          xml.send(row[:xmlel], **attrs) {
-                            xml.send(:insert, Nokogiri::XML.fragment(row[:content]))
-                          }
-                        end
-                      end
-                    }
-                    xml["d"].status "HTTP/1.1 200 OK"
-                  }
+                    # track missing so we can report 404 on the others
+                    missing.reject! do |p|
+                      nsmatch = row[:xmlns] == "" || row[:xmlns] == p.namespace&.href
+                      nsmatch && (p.name == row[:xmlel])
+                    end
+                  end
                 end
 
+                # data still in missing is reported 404
                 unless missing.empty?
-                  xml["d"].propstat {
-                    xml["d"].prop {
-                      missing.each do |prop|
-                        xml.send(prop.name, xmlns: prop.namespace&.href || "")
-                      end
-                    }
-                    xml["d"].status "HTTP/1.1 404 Not Found"
-                  }
+                  render_propstat(xml:, status: "404 Not Found", props: missing) do |prop|
+                    xml.send(prop.name, xmlns: prop.namespace&.href || "")
+                  end
                 end
               }
             end
@@ -290,6 +250,28 @@ module Dav
         halt 207, builder.to_xml
       end
 
+      def render_propstat xml:, status:, props:
+        xml["d"].propstat {
+          xml["d"].status "HTTP/1.1 #{status}"
+          xml["d"].prop {
+            props.each { |row| yield row }
+          }
+        }
+      end
+
+      def render_row xml:, row:, shallow:
+        attrs   = Hash.new(JSON.load(row[:xmlattrs]))
+        content = shallow ? nil : ->(_) do 
+          xml.send(:insert, Nokogiri::XML.fragment(row[:content]))
+        end
+
+        if row[:xmlns] == "DAV:"
+          xml["d"].send(row[:xmlel], **attrs, &content)
+        else
+          attrs.merge! xmlns: row[:xmlns]
+          xml.send(row[:xmlel], **attrs, &content)
+        end
+      end
 
     end
   end

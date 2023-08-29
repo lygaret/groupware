@@ -12,6 +12,7 @@ App::Container.register_provider(:database) do
 
     db = Sequel.connect(
       target[:settings].database_url,
+      logger: target[:logger],
       connect_sqls: [
         "PRAGMA journal_mode=WAL"
       ],
@@ -24,7 +25,6 @@ App::Container.register_provider(:database) do
             func.result = CGI.unescape str
           end
         end,
-      # logger: target[:logger]
     )
 
     register "db.connection", db
