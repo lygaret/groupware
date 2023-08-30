@@ -23,37 +23,31 @@ Sequel.migration do
       CREATE TRIGGER IF NOT EXISTS properties_sys_insert_resources 
       AFTER INSERT ON resources BEGIN
         INSERT OR REPLACE 
-            INTO properties_sys (rid, xmlns, xmlel, xmlattrs, content)
-                WITH property_cte (rid, xmlns, xmlel, xmlattrs, content) AS (
-                        SELECT res.id, 'DAV:', 'creationdate', '[]', res.created_at FROM resources res WHERE res.id = NEW.id
-                    UNION SELECT res.id, 'DAV:', 'displayname', '[]', unescape_url(res.path) FROM resources res WHERE res.id = NEW.id
-                    UNION SELECT res.id, 'DAV:', 'resourcetype', '[]', CASE res.coll WHEN 1 THEN '<collection/>' ELSE NULL END FROM resources res WHERE res.id = NEW.id
-                    UNION SELECT res.id, 'DAV:', 'getcontentlanguage', '[]', 'en-US' FROM resources res WHERE res.id = NEW.id
-                    UNION SELECT res.id, 'DAV:', 'getcontentlength', '[]', res.length FROM resources res WHERE res.id = NEW.id
-                    UNION SELECT res.id, 'DAV:', 'getcontenttype', '[]', res.type FROM resources res WHERE res.id = NEW.id
-                    UNION SELECT res.id, 'DAV:', 'getetag', '[]', res.etag FROM resources res WHERE res.id = NEW.id
-                    UNION SELECT res.id, 'DAV:', 'getlastmodified', '[]', COALESCE(res.updated_at, res.created_at) FROM resources res WHERE res.id = NEW.id
-                ) 
-                SELECT prop.rid, prop.xmlns, prop.xmlel, prop.xmlattrs, prop.content 
-                FROM property_cte prop;
+        INTO properties_sys (rid, xmlns, xmlel, xmlattrs, content)
+        VALUES 
+          (NEW.id, 'DAV:', 'creationdate',       '[]', NEW.created_at),
+          (NEW.id, 'DAV:', 'displayname',        '[]', unescape_url(NEW.path)),
+          (NEW.id, 'DAV:', 'resourcetype',       '[]', CASE NEW.coll WHEN 1 THEN '<collection/>' ELSE NULL END),
+          (NEW.id, 'DAV:', 'getcontentlanguage', '[]', 'en-US'), -- todo
+          (NEW.id, 'DAV:', 'getcontentlength',   '[]', NEW.length),
+          (NEW.id, 'DAV:', 'getcontenttype',     '[]', NEW.type),
+          (NEW.id, 'DAV:', 'getetag',            '[]', NEW.etag),
+          (NEW.id, 'DAV:', 'getlastmodified',    '[]', COALESCE(NEW.updated_at, NEW.created_at));
       END;
 
       CREATE TRIGGER IF NOT EXISTS properties_sys_update_resources 
       AFTER UPDATE ON resources BEGIN
         INSERT OR REPLACE 
-            INTO properties_sys (rid, xmlns, xmlel, xmlattrs, content)
-                WITH property_cte (rid, xmlns, xmlel, xmlattrs, content) AS (
-                        SELECT res.id, 'DAV:', 'creationdate', '[]', res.created_at FROM resources res WHERE res.id = NEW.id
-                    UNION SELECT res.id, 'DAV:', 'displayname', '[]', unescape_url(res.path) FROM resources res WHERE res.id = NEW.id
-                    UNION SELECT res.id, 'DAV:', 'resourcetype', '[]', CASE res.coll WHEN 1 THEN '<collection/>' ELSE NULL END FROM resources res WHERE res.id = NEW.id
-                    UNION SELECT res.id, 'DAV:', 'getcontentlanguage', '[]', 'en-US' FROM resources res WHERE res.id = NEW.id
-                    UNION SELECT res.id, 'DAV:', 'getcontentlength', '[]', res.length FROM resources res WHERE res.id = NEW.id
-                    UNION SELECT res.id, 'DAV:', 'getcontenttype', '[]', res.type FROM resources res WHERE res.id = NEW.id
-                    UNION SELECT res.id, 'DAV:', 'getetag', '[]', res.etag FROM resources res WHERE res.id = NEW.id
-                    UNION SELECT res.id, 'DAV:', 'getlastmodified', '[]', COALESCE(res.updated_at, res.created_at) FROM resources res WHERE res.id = NEW.id
-                ) 
-                SELECT prop.rid, prop.xmlns, prop.xmlel, prop.xmlattrs, prop.content
-                FROM property_cte prop;
+        INTO properties_sys (rid, xmlns, xmlel, xmlattrs, content)
+        VALUES 
+          (NEW.id, 'DAV:', 'creationdate',       '[]', NEW.created_at),
+          (NEW.id, 'DAV:', 'displayname',        '[]', unescape_url(NEW.path)),
+          (NEW.id, 'DAV:', 'resourcetype',       '[]', CASE NEW.coll WHEN 1 THEN '<collection/>' ELSE NULL END),
+          (NEW.id, 'DAV:', 'getcontentlanguage', '[]', 'en-US'), -- todo
+          (NEW.id, 'DAV:', 'getcontentlength',   '[]', NEW.length),
+          (NEW.id, 'DAV:', 'getcontenttype',     '[]', NEW.type),
+          (NEW.id, 'DAV:', 'getetag',            '[]', NEW.etag),
+          (NEW.id, 'DAV:', 'getlastmodified',    '[]', COALESCE(NEW.updated_at, NEW.created_at));
       END;
 
       INSERT INTO properties_sys (rid, xmlns, xmlel, xmlattrs, content) 
