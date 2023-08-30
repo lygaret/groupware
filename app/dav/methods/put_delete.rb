@@ -28,7 +28,7 @@ module Dav
         halt 409 unless parent[:coll]
 
         pid  = parent[:id]
-        path = request_path.name
+        path = request.basename
         resources.insert(pid:, path:, coll: true)
 
         halt 201 # created

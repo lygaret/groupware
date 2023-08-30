@@ -31,6 +31,11 @@ module Dav
       "repositories.resources"
     ]
 
+    include Methods::CopyMoveMethods
+    include Methods::GetHeadMethods
+    include Methods::PropFindPatchMethods
+    include Methods::PutDeleteMethods
+
     # override to retry on database locked errors
     def call!(...)
       attempted = false
@@ -53,28 +58,12 @@ module Dav
       @request = Dav::Request.new(@request.env)
     end
 
+    # ---
+
     def options *args
       response["Allow"] = OPTIONS_SUPPORTED_METHODS
+
       halt 204
-    end
-
-    include Methods::CopyMoveMethods
-    include Methods::GetHeadMethods
-    include Methods::PropFindPatchMethods
-    include Methods::PutDeleteMethods
-
-    private
-
-    def request_path
-      @request_path ||= Http::RequestPath.from_path request.path_info
-    end
-
-    def request_content_length
-        request.content_length.nil? ? 0 : Integer(request.content_length)
-    end
-
-    def request_content_type
-        request.content_type || Rack::Mime.mime_type(File.extname request_path.name)
     end
 
   end
