@@ -20,7 +20,6 @@ like school-aged families, polycules and co-parenting groups.
 
 * technical
 
-** features
 - WebDAV for shared file storage
     - notion like editor for these files, maybe just for markdown
 - CalDAV for calendars
@@ -28,7 +27,6 @@ like school-aged families, polycules and co-parenting groups.
 - Bot framework for ingest via chat
     - Telegram, SMS, Signal, WhatsApp?
 
-** groups
 - group can have members, which have more or less the same rights as each other
 - group can have non-members, which are first-class invitees etc, but don't have rights
 - circles
@@ -36,6 +34,21 @@ like school-aged families, polycules and co-parenting groups.
     - can be owned by a user or globally across the group
     - has metadata (relationship type)
     - can be a target for things like calendar invites
+
+** webdav
+
+- a ~resource~ has content info, a path, and a parent link
+- a ~resource~ has many ~properties~
+    - ~properties_user~ contains properties set by request (spec calls them "dead properties")
+    - ~properties_sys~ contains properties managed by the server (spec calls them "live properties")
+        - ~properties_sys~ is automatically populated via trigger
+
+- the repository can be given ~indexers~, which do two things:
+    - provides ~REPORT~ handling for a resource
+    - provides data storage (default is ~content~ column in db, but can do otherwise)
+    - provides record processing
+        - ~caldav~ and ~carddav~ are indexers
+        - a "photos" collection which had specific reports etc. may be todo
 
 * status
 
