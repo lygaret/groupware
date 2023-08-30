@@ -23,7 +23,7 @@ module Dav
         halt 405 unless resources.id_at_path(request.path).nil?
 
         # intermediate collections must already exist
-        parent = resources.at_path(request.dirname).select(:id, :coll).first
+        parent = resources.at_path(request.dirname).first
         halt 409 if     parent.nil?
         halt 409 unless parent[:coll]
 
@@ -56,7 +56,7 @@ module Dav
       end
 
       def put_insert
-        parent = resources.at_path(request.dirname).select(:id, :coll).first
+        parent = resources.at_path(request.dirname).first
         halt 404 if     parent.nil?
         halt 409 unless parent[:coll]
 

@@ -61,11 +61,17 @@ module Dav
           update.element_children.each do |child|
             case child
             in {name: "set", namespace: {href: "DAV:"}}
-              proppatch_set resource_id, child
+              # set each property given
+              child.css("> d|prop > *", DAV_NSDECL).each do |prop|
+                resources.set_property(resource_id, prop:)
+              end
             in {name: "remove", namespace: {href: "DAV:"}}
-              proppatch_remove resource_id, child
+              # remove each property given
+              child.css("> d|prop > *", DAV_NSDECL).each do |prop|
+                resources.remove_property(resource_id, xmlns: prop.namespace.href, xmlel: prop.name)
+              end
             else
-              # bad document if we got a request other than set/remove
+              # bad request if we got action other than set/remove
               halt 400
             end
           end
@@ -84,63 +90,23 @@ module Dav
         Nokogiri::XML.parse body rescue halt(400, $!.to_s)
       end
 
-      def proppatch_set resource_id, setel
-        setel.css("> d|prop > *", DAV_NSDECL).each do |prop|
-          xmlns    = prop.namespace&.href || ""
-          xmlel    = prop.name
-          xmlattrs = JSON.dump prop.attributes.to_a
-          content  = Nokogiri::XML.fragment(prop.children).to_xml
-
-          resources
-            .connection[:properties_user]
-            .insert_conflict(:replace)
-            .insert(rid: resource_id, xmlns:, xmlel:, xmlattrs:, content:)
-        end
-      end
-
-      def proppatch_remove resource_id, remel
-        # reduce over the props to collect a bunch of OR statements, so we can delete everything in one go
-        # the where(false) is necessary to get the ors to compose, as the default is where(true)
-        scope = resources.connection[:properties_user].where(false)
-        scope = remel.css("> d|prop > *", DAV_NSDECL).reduce(scope) do |scope, prop|
-          scope.or(rid: resource_id, xmlns: prop.namespace.href, xmlel: prop.name)
-        end
-
-        scope.delete
-      end
-
       def propfind_allprop(rid, depth:, root:, **opts)
-        scope = resources.with_descendants(rid, depth:)
-                  .join_table(:left_outer, :properties_all, rid: :id)
-                  .select_all(:properties_all).select_append(:fullpath)
-
-        contents = Hash.new { |h, k| h[k] = [] }
-        time = Benchmark.measure do
-          # separate by paths
-          scope.each do |row|
-            contents[row[:fullpath]] << row
-          end 
-        end
-        logger.info "ALL PROP QUERY TIME: #{time}"
+        # Hash<:fullpath, [property rows]>
+        properties = resources.fetch_properties(rid, depth:)
 
         # combine into the allprop response
-        output = nil
-        time = Benchmark.measure do
-          builder = Nokogiri::XML::Builder.new do |xml|
-            xml["d"].multistatus("xmlns:d" => "DAV:") {
-              contents.each do |path, props|
-                xml["d"].response {
-                  xml["d"].href path
-                  render_propstat(xml:, status: "200 OK", props:) do |row|
-                    render_row xml:, row:, shallow: false
-                  end
-                }
-              end
-            }
-          end
-          output = builder.to_xml
+        builder = Nokogiri::XML::Builder.new do |xml|
+          xml["d"].multistatus("xmlns:d" => "DAV:") {
+            properties.each do |path, props|
+              xml["d"].response {
+                xml["d"].href path
+                render_propstat(xml:, status: "200 OK", props:) do |row|
+                  render_row xml:, row:, shallow: false
+                end
+              }
+            end
+          }
         end
-        logger.info "BUILDER TIME: #{time}"
 
         # puts "PROPFIND ALLPROP depth:#{depth}"
         # puts root
@@ -148,24 +114,17 @@ module Dav
         # puts builder.to_xml
         # puts "----------------------"
 
-        halt 207, output
+        halt 207, builder.to_xml
       end
 
       def propfind_propname rid, depth:, root:, names:
-        scope = resources.with_descendants(rid, depth:)
-                  .join_table(:left_outer, :properties_all, rid: :id)
-                  .select_all(:properties_all).select_append(:fullpath)
-
-        # separate by paths
-        contents = Hash.new { |h, k| h[k] = [] }
-        scope.each do |row|
-          contents[row[:fullpath]] << row
-        end 
+        # Hash<:fullpath, [property rows]>
+        properties = resources.fetch_properties(rid, depth:)
 
         # combine into the allprop response
-        builder   = Nokogiri::XML::Builder.new do |xml|
+        builder = Nokogiri::XML::Builder.new do |xml|
           xml["d"].multistatus("xmlns:d" => "DAV:") {
-            contents.each do |path, props|
+            properties.each do |path, props|
               xml["d"].response {
                 xml["d"].href path
                 render_propstat(xml:, status: "200 OK", props:) do |row|
@@ -186,36 +145,19 @@ module Dav
       end
 
       def propfind_prop rid, depth:, root:, props:
-        desc    = resources.with_descendants(rid, depth:)
-        dbprops = resources.connection[:properties_all].where(false)
-
         # collect the expected children
-        # reducing the dbprops scope with `ORs` along the way
-        expected = []
-        props.element_children.each do |prop|
-          expected << prop
-          dbprops = dbprops.or(xmlns: prop.namespace&.href || "", xmlel: prop.name)
+        filters = props.element_children.map do |p|
+          { xmlns: p.namespace&.href || "", xmlel: p.name }
         end
 
-        # scope now is a left outer join (all the resources, prop cols are nil if missing)
-        scope = desc
-          .join_table(:left_outer, dbprops, { rid: :id }, table_alias: :props)
-          .select_all(:props).select_append(:fullpath)
-
-        # need a path element in contents for every child
-        contents = Hash.new { |h,k| h[k] = [] }
-        scope.each do |row|
-          contents[row[:fullpath]] ||= []
-          next if row[:xmlel].nil? # no property found
-
-          contents[row[:fullpath]] << row
-        end 
+        # filter to just the requested properties children
+        properties = resources.fetch_properties(rid, depth:, filters:)
 
         # combine into the allprop response
-        builder   = Nokogiri::XML::Builder.new do |xml|
+        builder = Nokogiri::XML::Builder.new do |xml|
           xml["d"].multistatus("xmlns:d" => "DAV:") {
-            contents.each do |path, props|
-              missing = expected.dup
+            properties.each do |path, props|
+              missing = filters.dup
 
               xml["d"].response {
                 xml["d"].href path
@@ -226,9 +168,8 @@ module Dav
                     render_row xml:, row:, shallow: false
 
                     # track missing so we can report 404 on the others
-                    missing.reject! do |p|
-                      nsmatch = row[:xmlns] == "" || row[:xmlns] == p.namespace&.href
-                      nsmatch && (p.name == row[:xmlel])
+                    missing.reject! do |prop|
+                      row[:xmlns] == prop[:xmlns] && row[:xmlel] == prop[:xmlel]
                     end
                   end
                 end
@@ -236,7 +177,7 @@ module Dav
                 # data still in missing is reported 404
                 unless missing.empty?
                   render_propstat(xml:, status: "404 Not Found", props: missing) do |prop|
-                    xml.send(prop.name, xmlns: prop.namespace&.href || "")
+                    xml.send(prop[:xmlel], xmlns: prop[:xmlns])
                   end
                 end
               }

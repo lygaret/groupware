@@ -19,7 +19,7 @@ module Dav
 
           # fetch the parent collection of the destination
           dest   = request.dav_destination
-          parent = resources.at_path(dest.dirname).select(:id, :coll).first
+          parent = resources.at_path(dest.dirname).first
 
           # conflict if the parent doesn't exist (or somehow isn't a collection)
           halt 409 if parent.nil?

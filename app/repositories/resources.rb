@@ -72,6 +72,44 @@ module Repositories
       resources.where(id: id).delete
     end
 
+    def set_property rid, prop:
+      xmlns    = prop.namespace&.href || ""
+      xmlel    = prop.name
+      xmlattrs = JSON.dump prop.attributes.to_a
+      content  = Nokogiri::XML.fragment(prop.children).to_xml
+
+      connection[:properties_user]
+        .insert_conflict(:replace)
+        .insert(rid:, xmlns:, xmlel:, xmlattrs:, content:)
+    end
+
+    def remove_property rid, xmlns:, xmlel:
+      connection[:properties_user].where(rid:, xmlns:, xmlel:).delete
+    end
+
+    def fetch_properties rid, depth:, filters: nil
+      join = :properties_all
+      if filters
+        join = connection[:properties_all].where(false)
+        join = filters.reduce(join) do |scope, filter|
+          scope.or(filter)
+        end
+      end
+
+      scope = 
+        with_descendants(rid, depth:)
+          .join_table(:left_outer, join, { rid: :id }, table_alias: :properties_all)
+          .select_all(:properties_all)
+          .select_append(:fullpath)
+
+      scope.each_with_object({}) do |row, results|
+        results[row[:fullpath]] ||= []
+        next if row[:rid].nil? # nil object from left outer join
+
+        results[row[:fullpath]] << row
+      end
+    end
+
     private
 
     def blobify_data_content data
