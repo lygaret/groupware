@@ -7,7 +7,7 @@ module Dav
       # RFC 2518, Section 8.7 - PUT Method
       # http://www.webdav.org/specs/rfc2518.html#METHOD_PUT
       def put *args
-        resource_id = resources.at_path(request.path).get(:id)
+        resource_id = resources.id_at_path(request.path)
         resource_id.nil? \
           ? put_insert
           : put_update(resource_id)
@@ -20,7 +20,7 @@ module Dav
         # not allowed if already exists RFC2518 8.3.2
         halt 415 if request.content_length
         halt 415 if request.media_type
-        halt 405 unless resources.at_path(request.path).empty?
+        halt 405 unless resources.id_at_path(request.path).nil?
 
         # intermediate collections must already exist
         parent = resources.at_path(request.dirname).select(:id, :coll).first
@@ -37,7 +37,7 @@ module Dav
       # RFC 2518, Section 8.6 DELETE
       # http://www.webdav.org/specs/rfc2518.html#METHOD_DELETE
       def delete *args
-        resource_id = resources.at_path(request.path).get(:id)
+        resource_id = resources.id_at_path(request.path)
         halt 404 if resource_id.nil?
 
         resources.delete(id: resource_id)

@@ -26,7 +26,7 @@ module Dav
           halt 409 unless parent[:coll]
 
           # overwrititng
-          extant_id = resources.at_path(dest.path).get(:id)
+          extant_id = resources.id_at_path(dest.path)
           if !extant_id.nil?
             halt 412 unless request.dav_overwrite?
 

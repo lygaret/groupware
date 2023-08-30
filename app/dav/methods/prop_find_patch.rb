@@ -1,4 +1,5 @@
 require 'json'
+require 'benchmark'
 
 module Dav
   module Methods
@@ -7,7 +8,7 @@ module Dav
       # RFC 2518, Section 8.1 - PROPFIND Method
       # http://www.webdav.org/specs/rfc2518.html#METHOD_PROPFIND
       def propfind *args
-        resource_id = resources.at_path(request.path).get(:id)
+        resource_id = resources.id_at_path(request.path)
         halt 404 if resource_id.nil?
 
         # we can't handle infinity directly, rather we pass a big-ol value
@@ -46,7 +47,7 @@ module Dav
       # RFC 2518, Section 8.2 - PROPPATCH Method
       # http://www.webdav.org/specs/rfc2518.html#METHOD_PROPPATCH
       def proppatch *args
-        resource_id = resources.at_path(request.path).get(:id)
+        resource_id = resources.id_at_path(request.path)
         halt 404 if resource_id.nil?
 
         # body must be a valid propertyupdate element
@@ -113,25 +114,33 @@ module Dav
                   .join_table(:left_outer, :properties_all, rid: :id)
                   .select_all(:properties_all).select_append(:fullpath)
 
-        # separate by paths
         contents = Hash.new { |h, k| h[k] = [] }
-        scope.each do |row|
-          contents[row[:fullpath]] << row
-        end 
+        time = Benchmark.measure do
+          # separate by paths
+          scope.each do |row|
+            contents[row[:fullpath]] << row
+          end 
+        end
+        logger.info "ALL PROP QUERY TIME: #{time}"
 
         # combine into the allprop response
-        builder = Nokogiri::XML::Builder.new do |xml|
-          xml["d"].multistatus("xmlns:d" => "DAV:") {
-            contents.each do |path, props|
-              xml["d"].response {
-                xml["d"].href path
-                render_propstat(xml:, status: "200 OK", props:) do |row|
-                  render_row xml:, row:, shallow: false
-                end
-              }
-            end
-          }
+        output = nil
+        time = Benchmark.measure do
+          builder = Nokogiri::XML::Builder.new do |xml|
+            xml["d"].multistatus("xmlns:d" => "DAV:") {
+              contents.each do |path, props|
+                xml["d"].response {
+                  xml["d"].href path
+                  render_propstat(xml:, status: "200 OK", props:) do |row|
+                    render_row xml:, row:, shallow: false
+                  end
+                }
+              end
+            }
+          end
+          output = builder.to_xml
         end
+        logger.info "BUILDER TIME: #{time}"
 
         # puts "PROPFIND ALLPROP depth:#{depth}"
         # puts root
@@ -139,7 +148,7 @@ module Dav
         # puts builder.to_xml
         # puts "----------------------"
 
-        halt 207, builder.to_xml
+        halt 207, output
       end
 
       def propfind_propname rid, depth:, root:, names:
