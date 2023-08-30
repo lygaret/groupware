@@ -37,8 +37,6 @@ module Dav
 
       begin
         super(...)
-      rescue MalformedRequestError => ex
-        halt 400, "problem with request: #{ex}"
       rescue Sequel::DatabaseError => ex
         raise unless ex.cause.is_a? SQLite3::BusyException
         raise if attempted

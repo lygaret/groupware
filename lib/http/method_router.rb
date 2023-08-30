@@ -16,10 +16,14 @@ module Http
         meth = @request.request_method.downcase.to_sym
         halt 405 unless respond_to? meth
 
-        before_req
-        body = method(meth).()
-        body = [body] unless body.respond_to? :each
-        @response.body = body
+        begin
+          before_req
+          body = method(meth).()
+          body = [body] unless body.respond_to? :each
+          @response.body = body
+        rescue MalformedRequestError => ex
+          halt 400, "malformed request: #{ex}"
+        end
       end
 
       after_req

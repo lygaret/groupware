@@ -1,10 +1,8 @@
 require 'rack'
 require 'rack/mime'
+require 'http/errors'
 
 module Dav
-
-  class MalformedRequestError < StandardError
-  end
 
   class Request < Rack::Request
 
@@ -41,7 +39,7 @@ module Dav
         begin
           content_length.nil? ? 0 : Integer(content_length)
         rescue ArgumentError
-          raise MalformedRequestError, "content length is not an integer!"
+          raise Http::MalformedRequestError, "content length is not an integer!"
         end
     end
 
@@ -57,7 +55,7 @@ module Dav
       @dav_depth ||= 
         begin
           depth = get_header("HTTP_DEPTH")&.downcase || "infinity"
-          raise MalformedRequestError, "depth is malformed: #{depth}" unless DAV_DEPTHS.include? depth
+          raise Http::MalformedRequestError, "depth is malformed: #{depth}" unless DAV_DEPTHS.include? depth
 
           depth == "infinity" ? :infinity : depth.to_i
         end
@@ -71,8 +69,8 @@ module Dav
           dest = get_header("HTTP_DESTINATION")
           return nil if dest.nil?
 
-          raise MalformedRequestError, "destination is external!" unless dest.delete_prefix!(base_url)
-          raise MalformedRequestError, "destination is external!" unless dest.delete_prefix!(script_name) || script_name == ""
+          raise Http::MalformedRequestError, "destination is external!" unless dest.delete_prefix!(base_url)
+          raise Http::MalformedRequestError, "destination is external!" unless dest.delete_prefix!(script_name) || script_name == ""
 
           Pathname.from_path dest
         end
