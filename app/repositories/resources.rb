@@ -11,14 +11,21 @@ module Repositories
     UUID_FUN = Sequel.function(:uuid)
     NOW_FUN  = Sequel.lit("datetime('now')")
 
+    def id_at_path path
+      connection[:resource_paths]
+        .where(path: path&.chomp("/"))
+        .get(:id)
+    end
+
     def at_path path
       return connection[:resource_ephemeral_root] if path == ""
 
-      connection[:resources].where(id:
-          connection[:resources]
-              .select(Sequel[:resources][:id])
-              .join(:resource_paths, id: :id)
-              .where(Sequel[:resource_paths][:path] => path&.chomp("/")))
+      pathid = 
+        connection[:resource_paths]
+          .where(path: path&.chomp("/"))
+          .select(:id)
+
+      connection[:resources].where(id: pathid)
     end
 
     def with_descendants(rid, depth:)

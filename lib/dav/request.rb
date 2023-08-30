@@ -47,7 +47,7 @@ module Dav
 
     # @return String, content type, looked up in the mime tables if not provided
     def dav_content_type
-      @dav_content_length ||= 
+      @dav_content_type ||= 
         content_type || Rack::Mime.mime_type(File.extname basename)
     end
 
