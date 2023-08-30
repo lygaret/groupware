@@ -3,6 +3,7 @@ require "nokogiri"
 require "pp"
 require "rack/mime"
 
+require "dav/request"
 require "ioutil/md5_reader"
 require "http/method_router"
 require "http/request_path"
@@ -33,8 +34,11 @@ module Dav
     # override to retry on database locked errors
     def call!(...)
       attempted = false
+
       begin
         super(...)
+      rescue MalformedRequestError => ex
+        halt 400, "problem with request: #{ex}"
       rescue Sequel::DatabaseError => ex
         raise unless ex.cause.is_a? SQLite3::BusyException
         raise if attempted
@@ -43,6 +47,12 @@ module Dav
         attempted = true
         retry
       end
+    end
+
+    def init_req(...)
+      super(...)
+
+      @request = Dav::Request.new(@request.env)
     end
 
     def options *args

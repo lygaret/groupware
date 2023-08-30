@@ -14,12 +14,12 @@ module Dav
 
       def copy_move move:
         resources.connection.transaction do
-          source = resources.at_path(request_path.path).first
+          source = resources.at_path(request.path).first
           halt 404 if source.nil?
 
           # fetch the parent collection of the destination
-          dest   = copy_move_destination request
-          parent = resources.at_path(dest.parent).select(:id, :coll).first
+          dest   = request.dav_destination
+          parent = resources.at_path(dest.dirname).select(:id, :coll).first
 
           # conflict if the parent doesn't exist (or somehow isn't a collection)
           halt 409 if parent.nil?
@@ -28,32 +28,19 @@ module Dav
           # overwrititng
           extant_id = resources.at_path(dest.path).get(:id)
           if !extant_id.nil?
-            overwrite = request.get_header("HTTP_OVERWRITE")&.downcase
-            halt 412 unless overwrite == "t"
+            halt 412 unless request.dav_overwrite?
 
             resources.delete(id: extant_id)
           end
 
           # now we can copy / move
           move \
-            ? resources.clone_tree(source[:id], parent[:id], dest.name)
-            : resources.move_tree(source[:id], parent[:id], dest.name)
+            ? resources.clone_tree(source[:id], parent[:id], dest.basename)
+            : resources.move_tree(source[:id], parent[:id], dest.basename)
 
           # per litmus, 204 if there was already content there
           halt(extant_id.nil? ? 201 : 204)
         end
-      end
-
-      # extract the destination header, as a requestpath object
-      def copy_move_destination request
-        destination = request.get_header("HTTP_DESTINATION")
-
-        # destination needs to be present, and local
-        halt 400 if destination.nil?
-        halt 400 unless destination.delete_prefix!(request.base_url)
-        halt 400 unless destination.delete_prefix!(request.script_name) || request.script_name == ""
-
-        Http::RequestPath.from_path destination
       end
 
     end

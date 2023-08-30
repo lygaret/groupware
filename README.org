@@ -1,22 +1,28 @@
-#+TITLE: Tribeware
+#+TITLE: groupware
 #+OPTIONS: todo:t html-checkbox-type:html
 
-Tribe is a calendar/contacts/notes sharing server for small, mostly trusted groups,
+`groupware` is a calendar/contacts/notes sharing server for small, mostly trusted groups,
 like school-aged families, polycules and co-parenting groups.
 
 * technical
 
-- an instance manages a single group, this isn't intended as SaaS
-- group can have members, which have more or less the same rights as each other
-- group can have non-members, which are first-class invitees etc, but don't have rights
-
+** features
 - WebDAV for shared file storage
     - notion like editor for these files, maybe just for markdown
 - CalDAV for calendars
 - CardDAV for contacts
 - Bot framework for ingest via chat
     - Telegram, SMS, Signal, WhatsApp?
-    
+
+** groups
+- group can have members, which have more or less the same rights as each other
+- group can have non-members, which are first-class invitees etc, but don't have rights
+- circles
+    - a "circle" is a grouping of people
+    - can be owned by a user or globally across the group
+    - has metadata (relationship type)
+    - can be a target for things like calendar invites
+
 * status
 
 - [x] webdav (resources + properties)

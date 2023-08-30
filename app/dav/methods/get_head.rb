@@ -3,7 +3,7 @@ module Dav
     module GetHeadMethods
 
       def get *args
-        resource = resources.at_path(request_path.path).first
+        resource = resources.at_path(request.path).first
 
         halt 404 if resource.nil?
         halt 204 if resource[:coll] == 1 # no content for collections

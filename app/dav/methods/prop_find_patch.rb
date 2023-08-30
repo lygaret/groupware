@@ -7,11 +7,12 @@ module Dav
       # RFC 2518, Section 8.1 - PROPFIND Method
       # http://www.webdav.org/specs/rfc2518.html#METHOD_PROPFIND
       def propfind *args
-        resource_id = resources.at_path(request_path.path).get(:id)
+        resource_id = resources.at_path(request.path).get(:id)
         halt 404 if resource_id.nil?
 
-        # depth tells us how deep to go
-        depth = request_depth
+        # we can't handle infinity directly, rather we pass a big-ol value
+        depth = request.dav_depth
+        depth = 100_000_000 if depth == :infinity
 
         # an empty body means allprop
         body = request.body.gets
@@ -45,7 +46,7 @@ module Dav
       # RFC 2518, Section 8.2 - PROPPATCH Method
       # http://www.webdav.org/specs/rfc2518.html#METHOD_PROPPATCH
       def proppatch *args
-        resource_id = resources.at_path(request_path.path).get(:id)
+        resource_id = resources.at_path(request.path).get(:id)
         halt 404 if resource_id.nil?
 
         # body must be a valid propertyupdate element
@@ -80,13 +81,6 @@ module Dav
 
         body ||= request.body.gets
         Nokogiri::XML.parse body rescue halt(400, $!.to_s)
-      end
-
-      def request_depth
-        depth = request.get_header("HTTP_DEPTH") || "infinity"
-        halt 400 unless DAV_DEPTHS.include? depth
-
-        depth == "infinity" ? 1000000 : depth.to_i
       end
 
       def proppatch_set resource_id, setel
