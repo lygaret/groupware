@@ -1,8 +1,22 @@
 #+TITLE: groupware
 #+OPTIONS: todo:t html-checkbox-type:html
 
-`groupware` is a calendar/contacts/notes sharing server for small, mostly trusted groups,
+~groupware~ is a calendar/contacts/notes sharing server for small, mostly trusted groups,
 like school-aged families, polycules and co-parenting groups.
+
+* how-to
+
+- *run migrations* :: ~bundle exec bin/migrate~
+- *run server*     :: ~bundle exec bin/serve~
+- *run console*    :: ~bundle exec bin/console~
+- *run tests* ::
+
+    http://www.webdav.org/neon/litmus/ is a WebDAV server test suite, which we're currently using
+    as an integration suite:
+
+    2. in this repository, run the server: ~bundle exec bin/migrate && bundle exec bin/server~
+    1. in some directory, download and extract the ~litmus~ source
+    3. in the ~litmus~ directory, run: ~make URL=http://localhost:9292/ check~
 
 * technical
 
