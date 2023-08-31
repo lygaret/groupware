@@ -43,8 +43,86 @@ module Repositories
     end
 
     def clone_tree source_id, dest_id, name
-      tree_clone_preparedstmt
-        .call(source_id: source_id, dest_id: dest_id, name: name)
+      # TODO: figure out param binding in this
+      # - string substitution in sql is bad, mkay
+      # - naive attempt causes "invalid bind param" errors
+      connection.run <<~SQL
+        -- since we need to insert into multiple tables,
+        -- we need to record the old/new mappings; srcid is to avoid collisions on this table
+
+        create temp table if not exists clone_targets 
+          (srcid TEXT, newid TEXT, newpid TEXT, newpath TEXT, oldid TEXT);
+
+        -- get descendants of the given source
+
+        with recursive cte_descendants as (
+            -- base - root of the branch to copy (renamed)
+            select uuid() as newid, resources.*
+            from resources where id = '#{source_id}'
+            union
+            -- recursive - children of the previously selected nodes
+            select uuid() as newid, resources.*
+            from resources
+            join cte_descendants as c on resources.pid = c.id
+        ),
+
+        -- now, since we've recorded the original id/pid and have the new uuid,
+        -- we can join and use the correct new id for the parent relationship
+        -- if new pid is null (from left join), it's the top-level, and it gets set to the destination
+
+        cte_fixed_pids as (
+            select
+                coalesce(parent.newid, '#{dest_id}') as newpid,
+                case when parent.id is null 
+                    then '#{name}'
+                    else child.path 
+                end as newpath,
+                child.*
+            from      cte_descendants child
+            left join cte_descendants parent on child.pid = parent.id
+        )
+
+        -- record the src/target mappings
+
+        insert into temp.clone_targets (srcid, newid, newpid, newpath, oldid)
+        select 
+          '#{source_id}',
+          fixed.newid, 
+          fixed.newpid, 
+          fixed.newpath, 
+          fixed.id
+        from cte_fixed_pids fixed;
+
+        -- and then clone the resources and user properties
+
+        insert into resources (id, pid, path, coll, type, length, content, etag, created_at, updated_at)
+        select
+          fixed.newid,
+          fixed.newpid,
+          fixed.newpath,
+          res.coll,
+          res.type,
+          res.length,
+          res.content,
+          res.etag,
+          datetime('now'),
+          null
+        from temp.clone_targets fixed
+        join resources res on fixed.srcid = '#{source_id}' and fixed.oldid = res.id;
+
+        insert into properties_user (rid, xmlns, xmlel, xmlattrs, content)
+        select
+          fixed.newid,
+          prop.xmlns,
+          prop.xmlel,
+          prop.xmlattrs,
+          prop.content
+        from temp.clone_targets fixed
+        join properties_user prop on fixed.srcid = '#{source_id}' and fixed.oldid = prop.rid;
+
+        delete from temp.clone_targets
+        where srcid = '#{source_id}';
+      SQL
     end
 
     def insert pid:, path:, **data
@@ -135,55 +213,6 @@ module Repositories
           .join(:desc, id: :pid),
         args: [:id, :fullpath, :depth])
         .select_all(:desc)
-    end
-
-    def tree_clone_preparedstmt
-      @clone_tree_preparedstmt ||= connection[<<~SQL].prepare(:insert, :tree_clone)
-        with 
-        recursive cte_descendants as (
-            -- base - root of the branch to copy (renamed)
-            select uuid() as newid, resources.*
-            from resources where id = :source_id
-            union
-            -- recursive - children of the previously selected nodes
-            select uuid() as newid, resources.*
-            from resources
-            join cte_descendants as c on resources.pid = c.id
-        ),
-
-            -- now, since we've recorded the original id/pid and have the new uuid,
-            -- we can join and use the correct new id for the parent relationship
-            -- if new pid is null (from left join), it's the top-level, and it gets set to the destination
-
-        cte_fixed_pids as (
-            select
-                coalesce(parent.newid, :dest_id) as newpid,
-                case when parent.id is null 
-                    then :name 
-                    else child.path 
-                end as newpath,
-                child.*
-            from      cte_descendants child
-            left join cte_descendants parent on child.pid = parent.id
-        )
-
-            -- now, just select into the actual tables
-
-        insert into resources 
-        select
-            fixed.newid,
-            fixed.newpid,
-            fixed.newpath,
-
-            fixed.coll,
-            fixed.type,
-            fixed.length,
-            fixed.content,
-            fixed.etag,
-            datetime('now'),
-            null
-        from cte_fixed_pids as fixed;
-      SQL
     end
   end
 end

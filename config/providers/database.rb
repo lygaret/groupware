@@ -12,7 +12,7 @@ App::Container.register_provider(:database) do
 
     db = Sequel.connect(
       target[:settings].database_url,
-      logger: target[:logger],
+      # logger: target[:logger],
       connect_sqls: [
         "PRAGMA journal_mode=WAL"
       ],
