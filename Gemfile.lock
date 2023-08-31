@@ -6,7 +6,7 @@ GIT
 
 GIT
   remote: https://github.com/rack/rack.git
-  revision: 696ed9e8f48053683a0a19fc68eb49f094c0efcb
+  revision: 64610db2d2e7e910c4d3e17874dc316ed3eb227a
   branch: main
   specs:
     rack (3.0.0)
