@@ -25,4 +25,5 @@ group :development, :test do
   gem "debug"
   gem "rackup"
   gem "standard"
+  gem "awesome_print"
 end

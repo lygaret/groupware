@@ -1,8 +1,9 @@
 module Repositories
   class Resources
+
     include App::Import["db.connection"]
 
-    def resources = connection[:resources]
+    def resources  = connection[:resources]
     def properties = connection[:properties]
 
     COL_ID = Sequel[:resource_paths][:id]
