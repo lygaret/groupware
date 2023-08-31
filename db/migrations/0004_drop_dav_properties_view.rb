@@ -1,5 +1,4 @@
 Sequel.migration do
-  
   up do
     drop_view :properties_dav
   end
@@ -29,5 +28,4 @@ Sequel.migration do
           JOIN  property_cte prop ON prop.rid = res.id;
     SQL
   end
-
 end

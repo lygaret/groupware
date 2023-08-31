@@ -10,8 +10,10 @@ module Http
       end
 
       LogStreamWrapper = Struct.new(:logger) do
-        def puts(arg)  = logger.unknown arg
+        def puts(arg) = logger.unknown arg
+
         def write(arg) = logger << arg
+
         def flush # noop
         end
       end

@@ -1,16 +1,16 @@
 module Repositories
   class Resources
-
     include App::Import["db.connection"]
 
-    def resources  = connection[:resources]
+    def resources = connection[:resources]
+
     def properties = connection[:properties]
 
     COL_ID = Sequel[:resource_paths][:id]
     COL_FULLPATH = Sequel[:resource_paths][:fullpath]
 
     UUID_FUN = Sequel.function(:uuid)
-    NOW_FUN  = Sequel.lit("datetime('now')")
+    NOW_FUN = Sequel.lit("datetime('now')")
 
     def id_at_path path
       connection[:resource_paths]
@@ -21,7 +21,7 @@ module Repositories
     def at_path path
       return connection[:resource_ephemeral_root] if path == ""
 
-      pathid = 
+      pathid =
         connection[:resource_paths]
           .where(path: path&.chomp("/"))
           .select(:id)
@@ -43,7 +43,7 @@ module Repositories
     end
 
     def clone_tree source_id, dest_id, name
-      tree_clone_preparedstmt 
+      tree_clone_preparedstmt
         .call(source_id: source_id, dest_id: dest_id, name: name)
     end
 
@@ -74,10 +74,10 @@ module Repositories
     end
 
     def set_property rid, prop:
-      xmlns    = prop.namespace&.href || ""
-      xmlel    = prop.name
+      xmlns = prop.namespace&.href || ""
+      xmlel = prop.name
       xmlattrs = JSON.dump prop.attributes.to_a
-      content  = Nokogiri::XML.fragment(prop.children).to_xml
+      content = Nokogiri::XML.fragment(prop.children).to_xml
 
       connection[:properties_user]
         .insert_conflict(:replace)
@@ -97,9 +97,9 @@ module Repositories
         end
       end
 
-      scope = 
+      scope =
         with_descendants(rid, depth:)
-          .join_table(:left_outer, join, { rid: :id }, table_alias: :properties_all)
+          .join_table(:left_outer, join, {rid: :id}, table_alias: :properties_all)
           .select_all(:properties_all)
           .select_append(:fullpath)
 
@@ -121,20 +121,19 @@ module Repositories
     end
 
     def tree_descendants_cte root_id, depth
-      connection[:desc].with_recursive(:desc, 
+      connection[:desc].with_recursive(:desc,
         connection[:resource_paths]
           .select(:id, :path, Sequel[0].as(:depth))
           .where(id: root_id),
         connection[:resources]
           .select(
-            Sequel[:resources][:id], 
+            Sequel[:resources][:id],
             Sequel[:desc][:fullpath] + "/" + Sequel[:resources][:path],
             Sequel[:desc][:depth] + 1
           )
           .where(Sequel[:depth] < depth)
           .join(:desc, id: :pid),
-        args: [:id, :fullpath, :depth]
-      )
+        args: [:id, :fullpath, :depth])
         .select_all(:desc)
     end
 
@@ -186,6 +185,5 @@ module Repositories
         from cte_fixed_pids as fixed;
       SQL
     end
-
   end
 end

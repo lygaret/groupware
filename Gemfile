@@ -2,7 +2,7 @@ source "https://rubygems.org"
 
 ruby "~> 3.1"
 
-gem "rack", "~> 3.0", github: "rack/rack", branch: 'main'
+gem "rack", "~> 3.0", github: "rack/rack", branch: "main"
 gem "sequel"
 gem "sqlite3"
 gem "nokogiri"

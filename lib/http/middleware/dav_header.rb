@@ -1,9 +1,8 @@
 module Http
   module Middleware
-
     class DavHeader
       def initialize(app, supports:)
-        @app      = app
+        @app = app
         @supports = supports
       end
 
@@ -13,7 +12,6 @@ module Http
 
         response
       end
-
     end
   end
 end

@@ -1,10 +1,9 @@
 module Http
   class MethodRouter
-
     attr_reader :request, :response, :params, :env
 
     def call(env)
-      self.dup.call!(env)
+      dup.call!(env)
     end
 
     def call!(env)
@@ -18,7 +17,7 @@ module Http
 
         begin
           before_req
-          body = method(meth).()
+          body = method(meth).call
           body = [body] unless body.respond_to? :each
           @response.body = body
         rescue MalformedRequestError => ex
@@ -31,14 +30,17 @@ module Http
     end
 
     def init_req(env)
-      @request  = Rack::Request.new(env)
+      @request = Rack::Request.new(env)
       @response = Rack::Response.new
-      @params   = request.params
-      @env      = env
+      @params = request.params
+      @env = env
     end
 
-    def before_req; end
-    def after_req; end
+    def before_req
+    end
+
+    def after_req
+    end
 
     def halt(*res)
       response.status = res.detect { |x| x.is_a?(Integer) } || 200
@@ -46,6 +48,5 @@ module Http
       response.body = [res.detect { |x| x.is_a?(String) } || ""]
       throw :halt, response
     end
-
   end
 end

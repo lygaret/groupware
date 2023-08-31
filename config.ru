@@ -11,7 +11,7 @@ use Rack::Lint
 use Rack::TempfileReaper
 
 use Rack::ContentLength
-#use Rack::Deflater
+# use Rack::Deflater
 
 use Rack::ShowExceptions
 use Http::Middleware::Logger, App::Container["logger"]

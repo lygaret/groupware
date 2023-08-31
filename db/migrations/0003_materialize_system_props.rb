@@ -1,5 +1,4 @@
 Sequel.migration do
-
   up do
     run <<~SQL
       CREATE TABLE properties_sys (
@@ -66,5 +65,4 @@ Sequel.migration do
       DROP TABLE properties_sys;
     SQL
   end
-
 end

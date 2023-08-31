@@ -1,10 +1,9 @@
-require 'json'
-require 'benchmark'
+require "json"
+require "benchmark"
 
 module Dav
   module Methods
     module PropFindPatchMethods
-
       # RFC 2518, Section 8.1 - PROPFIND Method
       # http://www.webdav.org/specs/rfc2518.html#METHOD_PROPFIND
       def propfind *args
@@ -17,12 +16,12 @@ module Dav
 
         # an empty body means allprop
         body = request.body.gets
-        if (body.nil? || body == "")
+        if body.nil? || body == ""
           return propfind_allprop(resource_id, depth:, root: nil)
         end
 
         # body must be a valid propfind element
-        doc  = fetch_request_xml! body
+        doc = fetch_request_xml! body
         root = doc.at_css("d|propfind:only-child", DAV_NSDECL)
         halt 400 if root.nil?
 
@@ -35,7 +34,7 @@ module Dav
         unless propname.nil?
           return propfind_propname(resource_id, depth:, root:, names: propname)
         end
-        prop     = root.at_css("d|prop", DAV_NSDECL)
+        prop = root.at_css("d|prop", DAV_NSDECL)
         unless prop.nil?
           return propfind_prop(resource_id, depth:, root:, props: prop)
         end
@@ -51,7 +50,7 @@ module Dav
         halt 404 if resource_id.nil?
 
         # body must be a valid propertyupdate element
-        doc    = fetch_request_xml!
+        doc = fetch_request_xml!
         update = doc.at_css("d|propertyupdate:only-child", DAV_NSDECL)
         halt 415 if update.nil?
 
@@ -86,8 +85,12 @@ module Dav
         # body must be declared xml (missing content type means we have to guess)
         halt 415 unless request.content_type.nil? || request.content_type =~ /(text|application)\/xml/
 
-        body ||= request.body.gets
-        Nokogiri::XML.parse body rescue halt(400, $!.to_s)
+        begin
+          body ||= request.body.gets
+          Nokogiri::XML.parse body
+        rescue => ex
+          halt(400, ex.message)
+        end
       end
 
       def propfind_allprop(rid, depth:, root:, **opts)
@@ -147,7 +150,7 @@ module Dav
       def propfind_prop rid, depth:, root:, props:
         # collect the expected children
         filters = props.element_children.map do |p|
-          { xmlns: p.namespace&.href || "", xmlel: p.name }
+          {xmlns: p.namespace&.href || "", xmlel: p.name}
         end
 
         # filter to just the requested properties children
@@ -204,8 +207,8 @@ module Dav
       end
 
       def render_row xml:, row:, shallow:
-        attrs   = Hash.new(JSON.load(row[:xmlattrs]))
-        content = shallow ? nil : ->(_) do 
+        attrs = Hash.new(JSON.load(row[:xmlattrs]))
+        content = shallow ? nil : ->(_) do
           xml.send(:insert, Nokogiri::XML.fragment(row[:content]))
         end
 
@@ -216,7 +219,6 @@ module Dav
           xml.send(row[:xmlel], **attrs, &content)
         end
       end
-
     end
   end
 end

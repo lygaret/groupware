@@ -1,5 +1,4 @@
 Sequel.migration do
-
   up do
     run <<~SQL
       CREATE TABLE properties_user (
@@ -44,9 +43,8 @@ Sequel.migration do
   end
 
   down do
-    drop_view  :properties_all
-    drop_view  :properties_dav
+    drop_view :properties_all
+    drop_view :properties_dav
     drop_table :properties_user
   end
-
 end

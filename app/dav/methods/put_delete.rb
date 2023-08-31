@@ -1,9 +1,8 @@
-require 'rack/mime'
+require "rack/mime"
 
 module Dav
   module Methods
     module PutDeleteMethods
-
       # RFC 2518, Section 8.7 - PUT Method
       # http://www.webdav.org/specs/rfc2518.html#METHOD_PUT
       def put *args
@@ -24,10 +23,10 @@ module Dav
 
         # intermediate collections must already exist
         parent = resources.at_path(request.dirname).first
-        halt 409 if     parent.nil?
+        halt 409 if parent.nil?
         halt 409 unless parent[:coll]
 
-        pid  = parent[:id]
+        pid = parent[:id]
         path = request.basename
         resources.insert(pid:, path:, coll: true)
 
@@ -47,8 +46,8 @@ module Dav
       private
 
       def put_update resource_id
-        length        = request.dav_content_length
-        type          = request.dav_content_type
+        length = request.dav_content_length
+        type = request.dav_content_type
         content, etag = read_hash_body length
 
         resources.update(id: resource_id, type:, length:, content:, etag:)
@@ -57,13 +56,13 @@ module Dav
 
       def put_insert
         parent = resources.at_path(request.dirname).first
-        halt 404 if     parent.nil?
+        halt 404 if parent.nil?
         halt 409 unless parent[:coll]
 
-        pid           = parent[:id]
-        path          = request.basename
-        length        = request.dav_content_length
-        type          = request.dav_content_type
+        pid = parent[:id]
+        path = request.basename
+        length = request.dav_content_length
+        type = request.dav_content_type
         content, etag = read_hash_body length
 
         resources.insert(pid:, path:, type:, length:, content:, etag:)
@@ -71,12 +70,11 @@ module Dav
       end
 
       def read_hash_body len
-        body    = IOUtil::MD5Reader.new request.body
+        body = IOUtil::MD5Reader.new request.body
         content = body.read(len) # hashes as a side effect
 
         [content, body.hash]
       end
-
     end
   end
 end

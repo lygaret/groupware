@@ -1,14 +1,14 @@
-require 'digest'
+require "digest"
 
 module IOUtil
   class MD5Reader
-
     def initialize(input)
       @input = input
-      @hash  = Digest::MD5.new
+      @hash = Digest::MD5.new
     end
 
-    def hash  = @hash.hexdigest
+    def hash = @hash.hexdigest
+
     def close = @input.close
 
     def gets
@@ -29,6 +29,5 @@ module IOUtil
         yield out
       end
     end
-
   end
 end

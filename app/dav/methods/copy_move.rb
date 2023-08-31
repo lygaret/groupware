@@ -1,7 +1,6 @@
 module Dav
   module Methods
     module CopyMoveMethods
-
       # RFC 2518, Section 8.8 - COPY Method
       # http://www.webdav.org/specs/rfc2518.html#METHOD_COPY
       def copy(*args) = copy_move move: true
@@ -18,7 +17,7 @@ module Dav
           halt 404 if source.nil?
 
           # fetch the parent collection of the destination
-          dest   = request.dav_destination
+          dest = request.dav_destination
           parent = resources.at_path(dest.dirname).first
 
           # conflict if the parent doesn't exist (or somehow isn't a collection)
@@ -42,7 +41,6 @@ module Dav
           halt(extant_id.nil? ? 201 : 204)
         end
       end
-
     end
   end
 end

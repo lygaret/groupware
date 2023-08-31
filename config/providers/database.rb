@@ -24,7 +24,7 @@ App::Container.register_provider(:database) do
           c.create_function("unescape_url", 1) do |func, str|
             func.result = CGI.unescape str
           end
-        end,
+        end
     )
 
     register "db.connection", db
