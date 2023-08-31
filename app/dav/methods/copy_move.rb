@@ -22,7 +22,7 @@ module Dav
 
           # conflict if the parent doesn't exist (or somehow isn't a collection)
           halt 409 if parent.nil?
-          halt 409 unless parent[:coll]
+          halt 409 if parent[:colltype].nil?
 
           # overwrititng
           extant_id = resources.id_at_path(dest.path)

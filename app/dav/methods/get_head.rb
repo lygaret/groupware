@@ -5,7 +5,9 @@ module Dav
         resource = resources.at_path(request.path).first
 
         halt 404 if resource.nil?
-        halt 204 if resource[:coll] == 1 # no content for collections
+        halt 204 unless resource[:colltype].nil? # no content for collections
+
+        # TODO: based on parent colltype, parse/index/extract resource fields
 
         response.headers.merge! resource_headers(resource)
         [resource[:content].to_str] # array because bodies must be enumerable

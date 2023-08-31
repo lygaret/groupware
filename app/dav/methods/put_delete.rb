@@ -24,11 +24,11 @@ module Dav
         # intermediate collections must already exist
         parent = resources.at_path(request.dirname).first
         halt 409 if parent.nil?
-        halt 409 unless parent[:coll]
+        halt 409 if parent[:colltype].nil?
 
         pid = parent[:id]
         path = request.basename
-        resources.insert(pid:, path:, coll: true)
+        resources.insert(pid:, path:, colltype: 'collection')
 
         halt 201 # created
       end
@@ -57,7 +57,9 @@ module Dav
       def put_insert
         parent = resources.at_path(request.dirname).first
         halt 404 if parent.nil?
-        halt 409 unless parent[:coll]
+        halt 409 if parent[:colltype].nil?
+
+        # TODO: based on colltype, parse/index/extract resource fields
 
         pid = parent[:id]
         path = request.basename

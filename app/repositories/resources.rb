@@ -95,12 +95,12 @@ module Repositories
 
         -- and then clone the resources and user properties
 
-        insert into resources (id, pid, path, coll, type, length, content, etag, created_at, updated_at)
+        insert into resources (id, pid, path, colltype, type, length, content, etag, created_at, updated_at)
         select
           fixed.newid,
           fixed.newpid,
           fixed.newpath,
-          res.coll,
+          res.colltype,
           res.type,
           res.length,
           res.content,
@@ -201,17 +201,18 @@ module Repositories
     def tree_descendants_cte root_id, depth
       connection[:desc].with_recursive(:desc,
         connection[:resource_paths]
-          .select(:id, :path, Sequel[0].as(:depth))
+          .select(:id, :path, Sequel[0].as(:depth), :colltype)
           .where(id: root_id),
         connection[:resources]
           .select(
             Sequel[:resources][:id],
             Sequel[:desc][:fullpath] + "/" + Sequel[:resources][:path],
-            Sequel[:desc][:depth] + 1
+            Sequel[:desc][:depth] + 1,
+            Sequel[:desc][:colltype]
           )
           .where(Sequel[:depth] < depth)
           .join(:desc, id: :pid),
-        args: [:id, :fullpath, :depth])
+        args: [:id, :fullpath, :depth, :colltype])
         .select_all(:desc)
     end
   end

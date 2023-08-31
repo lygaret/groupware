@@ -28,7 +28,7 @@ Sequel.migration do
         VALUES 
           (NEW.id, 'DAV:', 'creationdate',       '[]', NEW.created_at),
           (NEW.id, 'DAV:', 'displayname',        '[]', unescape_url(NEW.path)),
-          (NEW.id, 'DAV:', 'resourcetype',       '[]', CASE NEW.coll WHEN 1 THEN '<collection/>' ELSE NULL END),
+          (NEW.id, 'DAV:', 'resourcetype',       '[]', CASE WHEN NEW.colltype IS NOT NULL THEN ('<' || NEW.colltype || '>') ELSE NULL END),
           (NEW.id, 'DAV:', 'getcontentlanguage', '[]', 'en-US'), -- todo
           (NEW.id, 'DAV:', 'getcontentlength',   '[]', NEW.length),
           (NEW.id, 'DAV:', 'getcontenttype',     '[]', NEW.type),
@@ -43,7 +43,7 @@ Sequel.migration do
         VALUES 
           (NEW.id, 'DAV:', 'creationdate',       '[]', NEW.created_at),
           (NEW.id, 'DAV:', 'displayname',        '[]', unescape_url(NEW.path)),
-          (NEW.id, 'DAV:', 'resourcetype',       '[]', CASE NEW.coll WHEN 1 THEN '<collection/>' ELSE NULL END),
+          (NEW.id, 'DAV:', 'resourcetype',       '[]', CASE WHEN NEW.colltype IS NOT NULL THEN ('<' || NEW.colltype || '>') ELSE NULL END),
           (NEW.id, 'DAV:', 'getcontentlanguage', '[]', 'en-US'), -- todo
           (NEW.id, 'DAV:', 'getcontentlength',   '[]', NEW.length),
           (NEW.id, 'DAV:', 'getcontenttype',     '[]', NEW.type),
