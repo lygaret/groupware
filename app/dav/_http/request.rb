@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "rack"
 require "rack/mime"
 require "http/errors"
@@ -5,13 +7,13 @@ require "http/errors"
 module Dav
   module Http
     class Request < Rack::Request
-      DAV_DEPTHS = %w[infinity 0 1]
+      DAV_DEPTHS = %w[infinity 0 1].freeze
 
       Pathname = Data.define(:basename, :dirname) do
-        def self.from_path path
+        def self.from_path(path)
           path_parts = path.split("/")
-          basename = path_parts.pop
-          dirname = path_parts.join("/")
+          basename   = path_parts.pop
+          dirname    = path_parts.join("/")
 
           new(basename, dirname)
         end
@@ -25,10 +27,8 @@ module Dav
         @pathname = Pathname.from_path path_info
       end
 
-      def path = @pathname.path
-
-      def dirname = @pathname.dirname
-
+      def path     = @pathname.path
+      def dirname  = @pathname.dirname
       def basename = @pathname.basename
 
       # header access per DAV spec
@@ -52,13 +52,13 @@ module Dav
 
       # @return :infinity|Integer, the depth
       # @raises MalformedRequestError if the given depth isn't in DAV_DEPTHS
-      def dav_depth default: "infinity"
+      def dav_depth(default: "infinity")
         @dav_depth ||=
           begin
-            depth = get_header("HTTP_DEPTH")&.downcase || "infinity"
+            depth = get_header("HTTP_DEPTH")&.downcase || default
             raise Http::MalformedRequestError, "depth is malformed: #{depth}" unless DAV_DEPTHS.include? depth
 
-            (depth == "infinity") ? :infinity : depth.to_i
+            depth == "infinity" ? :infinity : depth.to_i
           end
       end
 
@@ -68,12 +68,14 @@ module Dav
         @dav_destination ||=
           begin
             dest = get_header("HTTP_DESTINATION")
-            return nil if dest.nil?
+            unless dest.nil?
+              raise Http::MalformedRequestError, "destination is external!" unless dest.delete_prefix!(base_url)
+              unless dest.delete_prefix!(script_name) || script_name == ""
+                raise Http::MalformedRequestError, "destination is external!"
+              end
+            end
 
-            raise Http::MalformedRequestError, "destination is external!" unless dest.delete_prefix!(base_url)
-            raise Http::MalformedRequestError, "destination is external!" unless dest.delete_prefix!(script_name) || script_name == ""
-
-            Pathname.from_path dest
+            dest && Pathname.from_path(dest)
           end
       end
 

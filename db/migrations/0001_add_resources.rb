@@ -1,7 +1,8 @@
+# frozen_string_literal: true
+
 Sequel.migration do
   up do
     run <<~SQL
-
       -- the tree structure of the nodes
 
       CREATE TABLE resources (
@@ -30,7 +31,7 @@ Sequel.migration do
       CREATE VIEW resource_paths (id, depth, path, colltype) AS
           WITH RECURSIVE paths(id, depth, path, colltype) AS (
               SELECT r.id, 0, '/' || r.path, r.colltype
-              FROM   resources r 
+              FROM   resources r
               WHERE  r.pid IS NULL -- root nodes
                   UNION
               SELECT r.id, p.depth + 1, p.path || '/' || r.path, coalesce(r.colltype, p.colltype)
@@ -47,7 +48,6 @@ Sequel.migration do
               VALUES(NULL, NULL, '', 'root')
           )
           SELECT * from ephemeral_root;
-
     SQL
   end
 

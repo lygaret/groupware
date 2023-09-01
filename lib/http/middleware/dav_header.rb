@@ -1,13 +1,15 @@
+# frozen_string_literal: true
+
 module Http
   module Middleware
     class DavHeader
       def initialize(app, supports:)
-        @app = app
+        @app      = app
         @supports = supports
       end
 
       def call(env)
-        _, headers, _ = response = @app.call(env)
+        _, headers,      = response = @app.call(env)
         headers["DAV"] ||= @supports
 
         response

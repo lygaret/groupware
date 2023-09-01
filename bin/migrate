@@ -1,23 +1,24 @@
 #!/usr/bin/env ruby
+# frozen_string_literal: true
 
-require 'optparse'
-require_relative '../config/app'
+require "optparse"
+require_relative "../config/app"
 App::Container.finalize!
 
 options = {}
 OptionParser.new do |opts|
-    opts.banner = "Usage: migrate [options]"
+  opts.banner = "Usage: migrate [options]"
 
-    opts.on("-r", "--rollback", "do a rollback") do |v|
-        options[:rollback] = v
-    end
+  opts.on("-r", "--rollback", "do a rollback") do |v|
+    options[:rollback] = v
+  end
 
-    opts.on("-t", "--target INTEGER", Integer, "the target version of the database") do |v|
-        options[:target] = v
-    end
+  opts.on("-t", "--target INTEGER", Integer, "the target version of the database") do |v|
+    options[:target] = v
+  end
 end.parse!
 
-# because we need specific database setup, 
+# because we need specific database setup,
 # we can't use the `sequel -m` cli for migrations
 
-App::Container['db.migrator'].run! version: options[:target]
+App::Container["db.migrator"].run! version: options[:target]

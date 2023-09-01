@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "rack/mime"
 
 module Dav
@@ -5,16 +7,18 @@ module Dav
     module PutDeleteMethods
       # RFC 2518, Section 8.7 - PUT Method
       # http://www.webdav.org/specs/rfc2518.html#METHOD_PUT
-      def put *args
+      def put(*_args)
         resource_id = resources.id_at_path(request.path)
-        resource_id.nil? \
-          ? put_insert
-          : put_update(resource_id)
+        if resource_id.nil?
+          put_insert
+        else
+          put_update(resource_id)
+        end
       end
 
       # RFC 2518, Section 8.3 - MKCOL Method
       # http://www.webdav.org/specs/rfc2518.html#METHOD_MKCOL
-      def mkcol *args
+      def mkcol(*_args)
         # mkcol w/ body is unsupported
         # not allowed if already exists RFC2518 8.3.2
         halt 415 if request.content_length
@@ -26,16 +30,16 @@ module Dav
         halt 409 if parent.nil?
         halt 409 if parent[:colltype].nil?
 
-        pid = parent[:id]
+        pid  = parent[:id]
         path = request.basename
-        resources.insert(pid:, path:, colltype: 'collection')
+        resources.insert(pid:, path:, colltype: "collection")
 
         halt 201 # created
       end
 
       # RFC 2518, Section 8.6 DELETE
       # http://www.webdav.org/specs/rfc2518.html#METHOD_DELETE
-      def delete *args
+      def delete(*_args)
         resource_id = resources.id_at_path(request.path)
         halt 404 if resource_id.nil?
 
@@ -45,9 +49,9 @@ module Dav
 
       private
 
-      def put_update resource_id
-        length = request.dav_content_length
-        type = request.dav_content_type
+      def put_update(resource_id)
+        length        = request.dav_content_length
+        type          = request.dav_content_type
         content, etag = read_hash_body length
 
         resources.update(id: resource_id, type:, length:, content:, etag:)
@@ -61,18 +65,18 @@ module Dav
 
         # TODO: based on colltype, parse/index/extract resource fields
 
-        pid = parent[:id]
-        path = request.basename
-        length = request.dav_content_length
-        type = request.dav_content_type
+        pid           = parent[:id]
+        path          = request.basename
+        length        = request.dav_content_length
+        type          = request.dav_content_type
         content, etag = read_hash_body length
 
         resources.insert(pid:, path:, type:, length:, content:, etag:)
         halt 201 # created
       end
 
-      def read_hash_body len
-        body = IOUtil::MD5Reader.new request.body
+      def read_hash_body(len)
+        body    = IOUtil::MD5Reader.new request.body
         content = body.read(len) # hashes as a side effect
 
         [content, body.hash]

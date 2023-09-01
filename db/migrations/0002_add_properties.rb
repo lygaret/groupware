@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 Sequel.migration do
   up do
     run <<~SQL
@@ -19,15 +21,15 @@ Sequel.migration do
           UNION SELECT res.id, 'DAV:', 'displayname', '[]', unescape_url(res.path) FROM resources res        -- todo
           UNION SELECT res.id, 'DAV:', 'resourcetype', '[]', CASE WHEN res.colltype IS NOT NULL THEN ('<' || res.colltype || '/>') ELSE NULL END FROM resources res
           UNION SELECT res.id, 'DAV:', 'getcontentlanguage', '[]', 'en-US' FROM resources res  -- todo
-          UNION SELECT res.id, 'DAV:', 'getcontentlength', '[]', res.length FROM resources res 
+          UNION SELECT res.id, 'DAV:', 'getcontentlength', '[]', res.length FROM resources res
           UNION SELECT res.id, 'DAV:', 'getcontenttype', '[]', res.type FROM resources res
           UNION SELECT res.id, 'DAV:', 'getetag', '[]', res.etag FROM resources res
           UNION SELECT res.id, 'DAV:', 'getlastmodified', '[]', COALESCE(res.updated_at, res.created_at) FROM resources res
-        ) 
+        )
         SELECT
           NULL as id,
           prop.rid,
-          prop.xmlns, 
+          prop.xmlns,
           prop.xmlel,
           prop.xmlattrs,
           prop.content

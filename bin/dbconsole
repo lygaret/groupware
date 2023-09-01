@@ -1,25 +1,27 @@
 #!/usr/bin/env ruby
+# frozen_string_literal: true
 
-require 'readline'
-require 'awesome_print'
+require "readline"
 
-require_relative '../config/app'
+require_relative "../config/app"
 App::Container.finalize!
 
 # save term state, and restore on Ctrl-C
 stty_save = `stty -g`.chomp
-trap('INT') { system('stty', stty_save); exit }
+trap("INT") do
+  system("stty", stty_save)
+  exit
+end
 
-db = App::Container['db.connection']
+db = App::Container["db.connection"]
 db.synchronize do |conn|
-    first = true
-    while buf = Readline.readline("> ", true)
-        begin
-            conn.execute2 buf do |row|
-                puts row.join "\t"
-            end
-        rescue => ex
-            puts "error: #{ex.message}"
-        end
+  while (buf = Readline.readline("> ", true))
+    begin
+      conn.execute2 buf do |row|
+        puts row.join "\t"
+      end
+    rescue StandardError => e
+      puts "error: #{e.message}"
     end
+  end
 end

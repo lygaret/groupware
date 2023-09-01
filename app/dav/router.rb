@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "time"
 require "nokogiri"
 require "rack/mime"
@@ -13,14 +15,14 @@ require_relative "_methods/prop_find_patch"
 require_relative "_methods/put_delete"
 
 module Dav
-  DAV_NSDECL = {d: "DAV:"}
-  DAV_DEPTHS = %w[infinity 0 1]
+  DAV_NSDECL = { d: "DAV:" }.freeze
+  DAV_DEPTHS = %w[infinity 0 1].freeze
 
   OPTIONS_SUPPORTED_METHODS = %w[
     OPTIONS HEAD GET PUT DELETE
     MKCOL COPY MOVE LOCK UNLOCK
     PROPFIND PROPPATCH
-  ].join ","
+  ].join(",").freeze
 
   class Router < ::Http::MethodRouter
     include App::Import[
@@ -39,11 +41,11 @@ module Dav
 
       begin
         super(...)
-      rescue Sequel::DatabaseError => ex
-        raise unless ex.cause.is_a? SQLite3::BusyException
+      rescue Sequel::DatabaseError => e
+        raise unless e.cause.is_a? SQLite3::BusyException
         raise if attempted
 
-        logger.error "database locked, retrying... #{ex}"
+        logger.error "database locked, retrying... #{e}"
         attempted = true
         retry
       end
@@ -57,7 +59,7 @@ module Dav
 
     # ---
 
-    def options *args
+    def options *_args
       response["Allow"] = OPTIONS_SUPPORTED_METHODS
 
       halt 204

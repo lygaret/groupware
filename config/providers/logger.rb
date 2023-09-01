@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "securerandom"
 
 App::Container.register_provider(:logger) do
@@ -10,7 +12,7 @@ App::Container.register_provider(:logger) do
 
     log_file = File.join(target[:settings].log_dir, "#{target.env}.log")
 
-    logger = Logger.new(log_file)
+    logger       = Logger.new(log_file)
     logger.level = target[:settings].log_level
 
     register(:logger, logger)

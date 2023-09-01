@@ -1,10 +1,12 @@
+# frozen_string_literal: true
+
 require "digest"
 
 module IOUtil
   class MD5Reader
     def initialize(input)
       @input = input
-      @hash = Digest::MD5.new
+      @hash  = Digest::MD5.new
     end
 
     def hash = @hash.hexdigest

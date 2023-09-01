@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Db
   class Migrator
     include App::Import["db.connection"]
@@ -11,7 +13,7 @@ module Db
       Sequel::Migrator.check_current(connection, migrations_path)
     end
 
-    def run! version: nil
+    def run!(version: nil)
       Sequel.extension :migration
       Sequel::Migrator.run(connection, migrations_path, target: version)
     end

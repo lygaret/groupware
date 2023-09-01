@@ -1,9 +1,11 @@
-ENV["APP_ENV"] ||= "development"
+# frozen_string_literal: true
+
+env = ENV["APP_ENV"] ||= "development"
 
 require "bundler"
-Bundler.setup(:default, ENV["APP_ENV"])
+Bundler.setup(:default, env)
 
 require "dotenv"
-Dotenv.load(".env", ".env.#{ENV["APP_ENV"]}")
+Dotenv.load(".env", ".env.#{env}")
 
-require "debug" if ENV["APP_ENV"] != "production"
+require "debug" if env != "production"

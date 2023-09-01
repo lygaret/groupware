@@ -1,32 +1,35 @@
+# frozen_string_literal: true
+
 module Repositories
   class Resources
     include App::Import["db.connection"]
 
-    def resources = connection[:resources]
+    COL_ID       = Sequel[:resource_paths][:id]
+    COL_FULLPATH = Sequel[:resource_paths][:fullpath]
+    FUN_UUID     = Sequel.function(:uuid)
+    FUN_NOW      = Sequel.lit("datetime('now')")
 
+    EMPTY_PATHS  = ["", "/"].freeze
+
+    def resources  = connection[:resources]
     def properties = connection[:properties]
 
-    COL_ID = Sequel[:resource_paths][:id]
-    COL_FULLPATH = Sequel[:resource_paths][:fullpath]
-
-    UUID_FUN = Sequel.function(:uuid)
-    NOW_FUN = Sequel.lit("datetime('now')")
-
-    def id_at_path path
+    def id_at_path(path)
       connection[:resource_paths]
         .where(path: path&.chomp("/"))
         .get(:id)
     end
 
-    def at_path path
-      return connection[:resource_ephemeral_root] if path == "" || path == "/"
+    def at_path(path)
+      return connection[:resource_ephemeral_root] if EMPTY_PATHS.include?(path)
 
       pathid =
         connection[:resource_paths]
           .where(path: path&.chomp("/"))
           .select(:id)
 
-      connection[:resources].where(id: pathid)
+      connection[:resources]
+        .where(id: pathid)
     end
 
     def with_descendants(rid, depth:)
@@ -36,13 +39,13 @@ module Repositories
         .select_append(:fullpath, :depth)
     end
 
-    def move_tree source_id, dest_id, name
+    def move_tree(source_id, dest_id, name)
       resources
         .where(id: source_id)
-        .update(pid: dest_id, path: name, updated_at: NOW_FUN)
+        .update(pid: dest_id, path: name, updated_at: FUN_NOW)
     end
 
-    def clone_tree source_id, dest_id, name
+    def clone_tree(source_id, dest_id, name)
       # TODO: figure out param binding in this
       # - string substitution in sql is bad, mkay
       # - naive attempt causes "invalid bind param" errors
@@ -50,7 +53,7 @@ module Repositories
         -- since we need to insert into multiple tables,
         -- we need to record the old/new mappings; srcid is to avoid collisions on this table
 
-        create temp table if not exists clone_targets 
+        create temp table if not exists clone_targets
           (srcid TEXT, newid TEXT, newpid TEXT, newpath TEXT, oldid TEXT);
 
         -- get descendants of the given source
@@ -73,9 +76,9 @@ module Repositories
         cte_fixed_pids as (
             select
                 coalesce(parent.newid, '#{dest_id}') as newpid,
-                case when parent.id is null 
+                case when parent.id is null
                     then '#{name}'
-                    else child.path 
+                    else child.path
                 end as newpath,
                 child.*
             from      cte_descendants child
@@ -85,11 +88,11 @@ module Repositories
         -- record the src/target mappings
 
         insert into temp.clone_targets (srcid, newid, newpid, newpath, oldid)
-        select 
+        select
           '#{source_id}',
-          fixed.newid, 
-          fixed.newpid, 
-          fixed.newpath, 
+          fixed.newid,
+          fixed.newpid,
+          fixed.newpath,
           fixed.id
         from cte_fixed_pids fixed;
 
@@ -127,57 +130,43 @@ module Repositories
 
     def insert pid:, path:, **data
       data = blobify_data_content data
-      opts = data.merge(
-        id: UUID_FUN,
-        pid: pid,
-        path: path,
-        created_at: NOW_FUN
-      )
+      opts = data.merge(id: FUN_UUID, pid:, path:, created_at: FUN_NOW)
 
       resources.insert(**opts)
     end
 
     def update id:, **data
       data = blobify_data_content data
-      opts = data.merge(
-        updated_at: NOW_FUN
-      )
+      opts = data.merge(updated_at: FUN_NOW)
 
-      resources.where(id: id).update(**opts)
+      resources.where(id:).update(**opts)
     end
 
-    def delete id:
+    def delete(id:)
       # cascades in the database to delete children
-      resources.where(id: id).delete
+      resources.where(id:).delete
     end
 
-    def set_property rid, prop:
-      xmlns = prop.namespace&.href || ""
-      xmlel = prop.name
+    def set_property(rid, prop:)
+      xmlns    = prop.namespace&.href || ""
+      xmlel    = prop.name
       xmlattrs = JSON.dump prop.attributes.to_a
-      content = Nokogiri::XML.fragment(prop.children).to_xml
+      content  = Nokogiri::XML.fragment(prop.children).to_xml
 
       connection[:properties_user]
         .insert_conflict(:replace)
         .insert(rid:, xmlns:, xmlel:, xmlattrs:, content:)
     end
 
-    def remove_property rid, xmlns:, xmlel:
+    def remove_property(rid, xmlns:, xmlel:)
       connection[:properties_user].where(rid:, xmlns:, xmlel:).delete
     end
 
-    def fetch_properties rid, depth:, filters: nil
-      join = :properties_all
-      if filters
-        join = connection[:properties_all].where(false)
-        join = filters.reduce(join) do |scope, filter|
-          scope.or(filter)
-        end
-      end
-
+    def fetch_properties(rid, depth:, filters: nil)
+      join  = filtered_properties(filters)
       scope =
         with_descendants(rid, depth:)
-          .join_table(:left_outer, join, {rid: :id}, table_alias: :properties_all)
+          .join_table(:left_outer, join, { rid: :id }, table_alias: :properties_all)
           .select_all(:properties_all)
           .select_append(:fullpath)
 
@@ -191,15 +180,29 @@ module Repositories
 
     private
 
-    def blobify_data_content data
+    def blobify_data_content(data)
       return data unless data.key? :content
       return data if data[:content].nil?
 
       data.merge(content: Sequel::SQL::Blob.new(data[:content]))
     end
 
-    def tree_descendants_cte root_id, depth
-      connection[:desc].with_recursive(:desc,
+    # returns properties_all, filtered to the given set of property xmlns/xmlel
+    def filtered_properties(filters)
+      if filters
+        # reduce the filters over `or`, false is the identity there
+        all = connection[:properties_all].where(false)
+        filters.reduce(all) do |scope, filter|
+          scope.or(filter)
+        end
+      else
+        connection[:properties_all]
+      end
+    end
+
+    def tree_descendants_cte(root_id, depth)
+      connection[:desc].with_recursive(
+        :desc,
         connection[:resource_paths]
           .select(:id, :path, Sequel[0].as(:depth), :colltype)
           .where(id: root_id),
@@ -212,7 +215,8 @@ module Repositories
           )
           .where(Sequel[:depth] < depth)
           .join(:desc, id: :pid),
-        args: [:id, :fullpath, :depth, :colltype])
+        args: %i[id fullpath depth colltype]
+      )
         .select_all(:desc)
     end
   end

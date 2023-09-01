@@ -1,9 +1,10 @@
 #!/usr/bin/env ruby
+# frozen_string_literal: true
 
-require 'rackup'
+require "rackup"
 
 class Server < Rackup::Server
-    def self.middleware = Hash.new {|h, k| h[k] = []}
+  def self.middleware = Hash.new { |h, k| h[k] = [] }
 end
 
 Server.start

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 ENV["APP_ENV"] = "test"
 
 RSpec.configure do |config|
@@ -16,9 +18,7 @@ RSpec.configure do |config|
 
   config.filter_run_when_matching :focus
   config.example_status_persistence_file_path = "spec/results.txt"
-  if config.files_to_run.one?
-    config.default_formatter = "doc"
-  end
+  config.default_formatter                    = "doc" if config.files_to_run.one?
 
   config.order = :random
   Kernel.srand config.seed
@@ -31,7 +31,7 @@ App::Container.enable_stubs!
 App::Container.finalize!
 
 support_glob = File.expand_path("./support/**/*.rb", __dir__)
-Dir[support_glob].sort.each { |f| require f }
+Dir[support_glob].each { |f| require f }
 
 begin
   App::Container["db.migrator"].check!

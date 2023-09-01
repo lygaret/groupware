@@ -1,16 +1,18 @@
+# frozen_string_literal: true
+
 module Dav
   module Methods
     module GetHeadMethods
-      def get *args
+      def get(*_args)
         resource = resources.at_path(request.path).first
         halt 404 if resource.nil?
 
-        unless resource[:colltype].nil?
-          cont = App::Container["dav.controllers.#{resource[:colltype]}"]
-          cont.get resource, request
-        else
+        if resource[:colltype].nil?
           response.headers.merge! resource_headers(resource)
           [resource[:content].to_str] # array because bodies must be enumerable
+        else
+          cont = App::Container["dav.controllers.#{resource[:colltype]}"]
+          cont.get resource, request
         end
       end
 
@@ -21,7 +23,7 @@ module Dav
 
       private
 
-      def resource_headers res
+      def resource_headers(res)
         headers = {
           "Content-Type" => res[:type],
           "Content-Length" => res[:length].to_s,

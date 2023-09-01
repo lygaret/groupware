@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Http
   RequestPath = Data.define(:name, :parent) do
     def self.from_path(path_info)
