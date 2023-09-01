@@ -11,19 +11,11 @@ module IOUtil
 
     def hash = @hash.hexdigest
 
-    def close = @input.close
+    # reader methods as expected by rack body readers
 
-    def gets
-      @input.gets.tap do |output|
-        @hash << output
-      end
-    end
-
-    def read(...)
-      @input.read(...).tap do |output|
-        @hash << output
-      end
-    end
+    def close     = @input.close
+    def gets(...) = @input.gets(...).tap { @hash << _1 }
+    def read(...) = @input.read(...).tap { @hash << _1 }
 
     def each
       @input.each do |out|
