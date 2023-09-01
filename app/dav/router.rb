@@ -2,15 +2,15 @@ require "time"
 require "nokogiri"
 require "rack/mime"
 
-require "dav/request"
 require "ioutil/md5_reader"
 require "http/method_router"
 require "http/request_path"
 
-require_relative "methods/copy_move"
-require_relative "methods/get_head"
-require_relative "methods/prop_find_patch"
-require_relative "methods/put_delete"
+require_relative "_http/request"
+require_relative "_methods/copy_move"
+require_relative "_methods/get_head"
+require_relative "_methods/prop_find_patch"
+require_relative "_methods/put_delete"
 
 module Dav
   DAV_NSDECL = {d: "DAV:"}
@@ -22,7 +22,7 @@ module Dav
     PROPFIND PROPPATCH
   ].join ","
 
-  class Router < Http::MethodRouter
+  class Router < ::Http::MethodRouter
     include App::Import[
       "logger",
       "repositories.resources"
@@ -52,7 +52,7 @@ module Dav
     def init_req(...)
       super(...)
 
-      @request = Dav::Request.new(@request.env)
+      @request = Dav::Http::Request.new(@request.env)
     end
 
     # ---

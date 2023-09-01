@@ -3,19 +3,20 @@ module Dav
     module GetHeadMethods
       def get *args
         resource = resources.at_path(request.path).first
-
         halt 404 if resource.nil?
-        halt 204 unless resource[:colltype].nil? # no content for collections
 
-        # TODO: based on parent colltype, parse/index/extract resource fields
-
-        response.headers.merge! resource_headers(resource)
-        [resource[:content].to_str] # array because bodies must be enumerable
+        unless resource[:colltype].nil?
+          cont = App::Container["dav.controllers.#{resource[:colltype]}"]
+          cont.get resource, request
+        else
+          response.headers.merge! resource_headers(resource)
+          [resource[:content].to_str] # array because bodies must be enumerable
+        end
       end
 
       def head(...)
         get(...) # sets headers and throws
-        halt 204 # no content
+        []       # no content
       end
 
       private

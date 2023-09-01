@@ -2,6 +2,7 @@ require_relative "boot"
 
 require "dry/system"
 require "string-inquirer"
+require "awesome_print"
 
 module App
   class Container < Dry::System::Container
@@ -14,7 +15,14 @@ module App
       config.registrations_dir = "config/registrations"
 
       # load path is added
-      config.component_dirs.add "app"
+
+      config.component_dirs.add "app" do |dir|
+        dir.auto_register = proc do |component|
+          # private modules start with _
+          !component.identifier.key.split('.').any? { _1.start_with? "_" }
+        end
+      end
+
       config.component_dirs.add "lib" do |dir|
         dir.auto_register = false
       end

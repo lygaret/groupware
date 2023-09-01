@@ -19,7 +19,7 @@ module Repositories
     end
 
     def at_path path
-      return connection[:resource_ephemeral_root] if path == ""
+      return connection[:resource_ephemeral_root] if path == "" || path == "/"
 
       pathid =
         connection[:resource_paths]
