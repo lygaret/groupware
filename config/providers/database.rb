@@ -1,9 +1,10 @@
 # frozen_string_literal: true
 
+require "cgi"
+require "securerandom"
+
 System::Container.register_provider(:database) do
   prepare do
-    require "cgi"
-    require "securerandom"
     require "sequel"
     require "sqlite3"
     require "sqlite3/ext/closure"
@@ -15,23 +16,20 @@ System::Container.register_provider(:database) do
 
     db = Sequel.connect(
       target[:settings].database_url,
-      logger: target[:logger],
+      logger: target[:logger].child({ system: 'sequel' }),
       after_connect:
         proc do |c|
-          c.enable_load_extension true
-          c.load_extension SQLite3::Ext::Closure::EXTENSION
-          c.enable_load_extension false
-
           c.create_function("uuid", 0) do |func|
             func.result = SecureRandom.uuid
           end
+
           c.create_function("unescape_url", 1) do |func, str|
             func.result = CGI.unescape str
           end
         end
     )
 
-    register "database", db
+    register "db.connection", db
   end
 
   stop do

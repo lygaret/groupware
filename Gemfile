@@ -41,4 +41,3 @@ group :development, :test do
   gem "yard", "~> 0.9.34"
   gem "yard-junk", "~> 0.0.9"
 end
-
