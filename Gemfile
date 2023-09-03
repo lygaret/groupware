@@ -8,7 +8,7 @@ gem "dotenv", "~> 2.8"
 gem "rack", "~> 3.0", github: "rack/rack", branch: "main"
 gem "rackup", "~> 2"
 
-gem "sequel", "~> 5.71"
+gem "sequel", "~> 5.72"
 gem "sqlite3", "~> 1.6"
 
 gem "nokogiri", "~> 1.15"
