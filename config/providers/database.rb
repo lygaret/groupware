@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 System::Container.register_provider(:database) do
   prepare do
     require "cgi"
@@ -16,6 +18,10 @@ System::Container.register_provider(:database) do
       logger: target[:logger],
       after_connect:
         proc do |c|
+          c.enable_load_extension true
+          c.load_extension SQLite3::Ext::Closure::EXTENSION
+          c.enable_load_extension false
+
           c.create_function("uuid", 0) do |func|
             func.result = SecureRandom.uuid
           end

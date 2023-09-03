@@ -5,9 +5,9 @@ source "https://rubygems.org"
 ruby "~> 3.1"
 
 gem "dotenv", "~> 2.8"
+gem "ougai", "~> 2.0"
 gem "rack", "~> 3.0", github: "rack/rack", branch: "main"
 gem "rackup", "~> 2"
-gem "ougai", "~> 2.0"
 
 gem "nokogiri", "~> 1.15"
 gem "string-inquirer", "~> 0", git: "https://gist.github.com/117441fc5236de9f7d54b76894d69dec.git"
@@ -36,5 +36,9 @@ group :development, :test do
   gem "rubocop-rake", "~> 0.6"
   gem "rubocop-rspec", "~> 2.23"
   gem "rubocop-sequel", "~> 0.3"
+
+  gem "redcarpet", "~> 3.6"
+  gem "yard", "~> 0.9.34"
+  gem "yard-junk", "~> 0.0.9"
 end
 
