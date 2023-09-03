@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 module Db
-
   # command to run migrations.
   #
   # @note because we customize our database connection, we need to

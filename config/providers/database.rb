@@ -16,7 +16,7 @@ System::Container.register_provider(:database) do
 
     db = Sequel.connect(
       target[:settings].database_url,
-      logger: target[:logger].child({ system: 'sequel' }),
+      logger: target[:logger].child({ system: "sequel" }),
       after_connect:
         proc do |c|
           c.create_function("uuid", 0) do |func|
