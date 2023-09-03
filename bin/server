@@ -1,0 +1,38 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "rack"
+require "rackup"
+
+require_relative "../config/system"
+System::Container.finalize!
+
+logger   = System::Container["logger"]
+settings = System::Container["settings"]
+env      = System::Container.env
+
+app = Rack::Builder.new do
+  if env.development?
+    use Rack::Lint
+    use Rack::ShowExceptions
+  end
+
+  use Rack::TempfileReaper
+  use Rack::ContentLength
+  use Rack::Deflater
+
+  run System::Container["dav.app"]
+end
+
+Rackup::Server.start(
+  app:,
+  warn: true,
+  debug: %i[debug trace].include?(settings.log_level),
+  environment: :none, # no default middleware
+
+  # for webrick - no access logs, those come from rack logger
+  Host: settings.host,
+  Port: settings.port,
+  Logger: logger.child(system: :rackup),
+  AccessLog: []
+)

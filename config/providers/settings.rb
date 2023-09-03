@@ -16,7 +16,9 @@ System::Container.register_provider(:settings, from: :dry_system) do
   settings do
     setting :database_url, constructor: System::Types::FilledString
 
-    setting :log_dir, default: "./log", constructor: System::Types::FilledString
+    setting :host, default: "localhost", constructor: System::Types::FilledString
+    setting :port, default: 5000,        constructor: System::Types::Params::Integer
+
     setting :log_level, default: :info, constructor: System::Types::LogLevel
   end
 end
