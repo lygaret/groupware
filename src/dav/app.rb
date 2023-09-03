@@ -4,6 +4,7 @@ require "rack"
 
 module Dav
   class App
+
     include System::Import[
       "logger",
       "repos.paths"
@@ -25,5 +26,6 @@ module Dav
     end
 
     def halt = throw :halt
+
   end
 end

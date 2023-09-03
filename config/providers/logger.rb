@@ -6,6 +6,7 @@ module System
   module Providers # :nodoc: all
     module Logger
       class CustomFormat < Ougai::Formatters::Readable
+
         def call(severity, time, _progname, data)
           msg = data.delete(:msg)
           @excluded_fields.each { |f| data.delete(f) }
@@ -18,6 +19,7 @@ module System
           end
           "#{strs.join("\n")}\n"
         end
+
       end
     end
   end

@@ -4,6 +4,7 @@ require_relative "_base_repo"
 
 module Repos
   class Paths < BaseRepo
+
     include System::Import["db.connection"]
 
     def paths = connection[:paths]
@@ -17,5 +18,6 @@ module Repos
       results = paths.returning(:id).insert(id: SQL.uuid, pid:, path:, ctype:)
       results&.first&.[](:id)
     end
+
   end
 end

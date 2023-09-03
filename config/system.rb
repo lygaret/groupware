@@ -15,6 +15,7 @@ module System
   #   System::Container.finalize!
   #   System::Container[:logger] # returns the auto-registered logger
   class Container < Dry::System::Container
+
     use :env, inferrer: -> { Accidental::StringInquirer.upgrade ENV.fetch("APP_ENV", nil) }
 
     configure do |config|
@@ -31,6 +32,7 @@ module System
         end
       end
     end
+
   end
 
   # dependency injection auto-injector for {System.Container}
