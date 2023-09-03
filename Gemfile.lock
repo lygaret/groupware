@@ -21,6 +21,7 @@ GIT
 GEM
   remote: https://rubygems.org/
   specs:
+    amazing_print (1.5.0)
     ast (2.4.2)
     base64 (0.1.1)
     bigdecimal (3.1.4)
@@ -51,6 +52,11 @@ GEM
       dry-configurable (~> 1.0, < 2)
       dry-core (~> 1.0, < 2)
       dry-events (~> 1.0, < 2)
+    dry-struct (1.6.0)
+      dry-core (~> 1.0, < 2)
+      dry-types (>= 1.7, < 2)
+      ice_nine (~> 0.11)
+      zeitwerk (~> 2.6)
     dry-system (1.0.1)
       dry-auto_inject (~> 1.0, < 2)
       dry-configurable (~> 1.0, < 2)
@@ -62,6 +68,7 @@ GEM
       dry-inflector (~> 1.0)
       dry-logic (~> 1.4)
       zeitwerk (~> 2.6)
+    ice_nine (0.11.2)
     io-console (0.6.0)
     irb (1.8.0)
       rdoc (~> 6.5)
@@ -70,6 +77,9 @@ GEM
     language_server-protocol (3.17.0.3)
     nokogiri (1.15.4-x86_64-linux)
       racc (~> 1.4)
+    oj (3.16.1)
+    ougai (2.0.0)
+      oj (~> 3.10)
     parallel (1.23.0)
     parser (3.2.2.3)
       ast (~> 2.4.1)
@@ -140,13 +150,16 @@ PLATFORMS
   x86_64-linux
 
 DEPENDENCIES
+  amazing_print (~> 1)
   debug (~> 1)
   dotenv (~> 2.8)
   dry-events (~> 1.0)
   dry-monitor (~> 1.0)
+  dry-struct (~> 1.0)
   dry-system (~> 1.0)
   dry-types (~> 1.0)
   nokogiri (~> 1.15)
+  ougai (~> 2.0)
   rack (~> 3.0)!
   rackup (~> 2)
   rake (~> 13.0)
