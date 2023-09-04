@@ -7,6 +7,7 @@ require "dav/_request"
 
 module Dav
   module Controllers
+    # Base for DAV resource controllers.
     class BaseController
 
       attr_reader :request, :response
