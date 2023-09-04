@@ -8,16 +8,33 @@ module Dav
     class Collection < BaseController
 
       include System::Import[
-        "repos.paths"
+        "repos.paths",
+        "logger"
       ]
 
       def get(path:, ppath:)
-        [200, {}, ["you got the collection!"]]
+        invalid! "not found", status: 404 if path.nil?
+
+        if path[:ctype]
+          # no content for a collection
+          complete 204
+        else
+          # todo get resource + header info
+          invalid! "not implemented", status: 500
+        end
+      end
+
+      def head(path:, ppath:)
+        status, headers, _ = get(path:, ppath:)
+        [status, headers, []] # just GET but with no body
       end
 
       def mkcol(path:, ppath:)
         invalid! "mkcol w/ body is unsupported", status: 415 if request.media_type
         invalid! "mkcol w/ body is unsupported", status: 415 if request.content_length
+
+        # path itself can't already exist
+        invalid! "path already exists", status: 415 unless path.nil?
 
         # intermediate collections must already exist
         invalid! "intermediate paths must exist", status: 409 if ppath.nil?
