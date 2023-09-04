@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "_base_repo"
+require "repos/_base_repo"
 
 module Repos
   class Paths < BaseRepo
@@ -9,9 +9,10 @@ module Repos
 
     def paths = connection[:paths]
 
-    def at(_path, depth: 0)
+    def at_path(path)
       paths
-        .join(:paths_closure, root:)
+        .join(:paths_full, id: :id)
+        .where(fullpath: path)
     end
 
     def insert(pid:, path:, ctype: nil)

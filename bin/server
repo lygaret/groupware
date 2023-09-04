@@ -21,13 +21,13 @@ app = Rack::Builder.new do
   use Rack::ContentLength
   use Rack::Deflater
 
-  run System::Container["dav.app"]
+  run System::Container["dav.router"]
 end
 
 Rackup::Server.start(
   app:,
   warn: true,
-  debug: %i[debug trace].include?(settings.log_level),
+  debug: settings.log_level == :trace,
   environment: :none, # no default middleware
 
   # for webrick - no access logs, those come from rack logger
