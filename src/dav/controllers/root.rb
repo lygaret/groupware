@@ -19,7 +19,6 @@ module Dav
         # but we're the root, so no intermediate checking
         invalid! "path already exists", status: 415 unless path.nil?
 
-        logger.info "MKCOL inserted a path: #{request.path}", path: request.path, ctype: "collection"
         paths.insert(pid: nil, path: request.path.basename, ctype: "collection")
         complete 201 # created
       end

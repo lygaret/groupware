@@ -1,7 +1,6 @@
 -m markdown
 -M redcarpet
 --title "GroupWare"
---private
 --protected
 --tag 'override:Overridden Method'
 --plugin junk
