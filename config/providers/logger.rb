@@ -8,15 +8,18 @@ module System
       class CustomFormat < Ougai::Formatters::Readable
 
         def call(severity, time, _progname, data)
-          msg = data.delete(:msg)
           @excluded_fields.each { |f| data.delete(f) }
 
-          sanserr     = data.except(:err)
-          level       = @plain ? severity : colored_level(severity)
-          strs        = ["[#{time.iso8601(3)}] #{level}: #{msg} (#{sanserr.inspect})"]
-          if (err_str = create_err_str(data))
-            strs.push(err_str)
-          end
+          msg     = data.delete(:msg)
+          syst    = data.delete(:system)&.then { "[#{_1.to_s.rjust(10)}]" } || "".rjust(12)
+          sanserr = data.except(:err)
+          level   = @plain ? severity : colored_level(severity)
+
+          strs    = ["#{level} [#{time.utc.strftime('%Y.%j %H%M%S.%L')}]#{syst}: #{msg} (#{sanserr.inspect})"]
+
+          err_str = create_err_str(data)
+          strs.push err_str if err_str
+
           "#{strs.join("\n")}\n"
         end
 
