@@ -19,6 +19,10 @@ module Dav
         self
       end
 
+      def transaction(&)
+        connection.transaction(&)
+      end
+
       def complete(status)
         response.status = status
         response.finish
