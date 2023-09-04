@@ -5,4 +5,18 @@ require_relative "../config/system"
 System::Container.finalize!
 
 require "irb"
-IRB.start
+
+class System::Console
+
+  def to_s     = "console"
+  def get(key) = System::Container[key]
+
+end
+
+IRB.setup(__FILE__)
+
+console   = System::Console.new
+workspace = IRB::WorkSpace.new(console)
+irb       = IRB::Irb.new(workspace)
+
+irb.run(IRB.conf)
