@@ -6,6 +6,10 @@ require "rack/constants"
 require "dav/_pathname"
 
 module Dav
+  # Rack application which routes requests to the correct DAV controller.
+  #
+  # Looks up the path (and possibly that path's parent) in order to find the
+  # resource controller handling that path, and then forwards the request.
   class Router
 
     include System::Import[
@@ -16,14 +20,13 @@ module Dav
     # rack application entry-point
     # @param env [Hash] the rack hash for the incoming request
     def call(env)
-      debugger
       pathinfo = env[Rack::PATH_INFO]
       methname = env[Rack::REQUEST_METHOD].downcase.to_sym
       pathname = Dav::Pathname.parse pathinfo
 
       if pathname.to_s == ""
         # quick bypass for the root
-        controller = get_root_controller
+        controller = root_controller
         call_controller(controller, methname, path: nil, ppath: nil, env:)
       else
         # otherwise; look up the path
@@ -60,12 +63,12 @@ module Dav
       controller.send(methname, path:, ppath:, env:)
     end
 
-    def get_controller pathrow
+    def get_controller(pathrow)
       System::Container["dav.controllers.#{pathrow[:pctype]}"]
     end
 
-    def get_root_controller
-       System::Container["dav.controllers.root"]
+    def root_controller
+      System::Container["dav.controllers.root"]
     end
 
   end

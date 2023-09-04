@@ -3,6 +3,7 @@
 require "repos/_base_repo"
 
 module Repos
+  # the data access layer to the path storage
   class Paths < BaseRepo
 
     include System::Import["db.connection"]

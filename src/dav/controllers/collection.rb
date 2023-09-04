@@ -1,8 +1,10 @@
-require 'dav/controllers/_base_controller'
+# frozen_string_literal: true
+
+require "dav/controllers/_base_controller"
 
 module Dav
   module Controllers
-
+    # controller for plain WebDAV resources, without special semantics.
     class Collection < BaseController
 
       include System::Import[
@@ -14,6 +16,5 @@ module Dav
       end
 
     end
-
   end
 end

@@ -1,8 +1,10 @@
-require 'dav/controllers/_base_controller'
+# frozen_string_literal: true
+
+require "dav/controllers/_base_controller"
 
 module Dav
   module Controllers
-
+    # controller for resources when the path is empty.
     class Root < BaseController
 
       include System::Import[
@@ -17,11 +19,10 @@ module Dav
         request  = Rack::Request.new(env)
         pathname = Dav::Pathname.parse request.path_info
 
-        paths.insert(pid: nil, path: pathname.basename, ctype: 'collection')
+        paths.insert(pid: nil, path: pathname.basename, ctype: "collection")
         [204, {}, []]
       end
 
     end
-
   end
 end

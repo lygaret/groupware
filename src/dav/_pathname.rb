@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Dav
 
   # Represents a path, and gives us easy access to the name and dirname
