@@ -19,13 +19,13 @@ module Dav
           # no content for a collection
           complete 204
         else
-          # todo get resource + header info
+          # TODO: get resource + header info
           invalid! "not implemented", status: 500
         end
       end
 
       def head(path:, ppath:)
-        status, headers, _ = get(path:, ppath:)
+        status, headers, = get(path:, ppath:)
         [status, headers, []] # just GET but with no body
       end
 

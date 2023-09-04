@@ -8,7 +8,8 @@ module Dav
     # controller for resources when the path is empty.
     class Root < Collection
 
-      def get(path:, ppath:)  = complete 204 # no content
+      # no content
+      def get(path:, ppath:)  = complete 204
       def head(path:, ppath:) = complete 204
 
       def mkcol(path:, ppath:)

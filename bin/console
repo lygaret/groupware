@@ -6,11 +6,14 @@ System::Container.finalize!
 
 require "irb"
 
-class System::Console
+module System
+  # context in which the dev console is run
+  class Console
 
-  def to_s     = "console"
-  def get(key) = System::Container[key]
+    def to_s     = "console"
+    def get(key) = System::Container[key]
 
+  end
 end
 
 IRB.setup(__FILE__)

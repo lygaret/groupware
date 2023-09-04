@@ -13,7 +13,7 @@ module Dav
     end
 
     def to_s    = [dirname, basename].join("/")
-    def inspect = "Pathname(#{to_s})"
+    def inspect = "Pathname(#{self})"
   end
 
 end
