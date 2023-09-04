@@ -7,8 +7,8 @@ module Dav
 
     attr_reader :status, :headers
 
-    def initialize(message = nil, **headers)
-      super(message)
+    def initialize(**headers)
+      super
 
       @status  = headers.delete(:status) || 200
       @headers = headers

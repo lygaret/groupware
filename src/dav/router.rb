@@ -49,7 +49,7 @@ module Dav
               call_forward(controller, methname, path: nil, ppath: parentrow, env:)
             else
               # otherwise it's completely not for us, 404
-              respond("not found", status: 404)
+              respond methname, body, status: 404
             end
           end
         end
@@ -67,12 +67,14 @@ module Dav
       begin
         controller.with_env(env).send(methname, path:, ppath:)
       rescue HaltRequest => e
-        respond e.message, status: e.status
+        respond methname, e.message, status: e.status
       end
     end
 
-    def respond(body, headers: {}, status: 200)
+    def respond(methname, body, headers: {}, status: 200)
+      body = ""     if methname == :head
       body = [body] unless body.respond_to? :each
+
       [status, headers, body]
     end
 

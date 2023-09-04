@@ -25,7 +25,7 @@ module Dav
       end
 
       def invalid!(reason = nil, status: 400)
-        raise HaltRequest, reason, status:
+        raise HaltRequest.new(status:), reason
       end
 
     end
