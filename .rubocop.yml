@@ -36,6 +36,9 @@ Metrics/PerceivedComplexity:
 Style/StringLiterals:
   EnforcedStyle: double_quotes
 
+Style/UnlessElse:
+  Enabled: false
+
 Layout/EmptyLinesAroundClassBody:
   EnforcedStyle: empty_lines_except_namespace
 
