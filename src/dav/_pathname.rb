@@ -12,7 +12,8 @@ module Dav
       new(basename, dirname)
     end
 
-    def to_s = [dirname, basename].join("/")
+    def to_s    = [dirname, basename].join("/")
+    def inspect = "Pathname(#{to_s})"
   end
 
 end
