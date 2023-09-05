@@ -32,10 +32,9 @@ module Dav
         invalid! "not found", status: 404 if path.nil?
 
         if path[:ctype]
-          # no content for a collection
-          complete 204
+          complete 204 # no content for a collection
         else
-          resource = paths.resource_at(pid: path[:id]).first
+          resource = paths.resource_at(pid: path[:id])
           if resource.nil?
             complete 204 # no content at path!
           else
@@ -108,7 +107,7 @@ module Dav
           content, etag = read_md5_body(request.body, length)
 
           # insert the resource at that path
-          paths.put_resource(id:, length:, type:, content:, etag:)
+          paths.put_resource(pid: id, length:, type:, content:, etag:)
         end
 
         complete 201
@@ -122,8 +121,8 @@ module Dav
         content, etag = read_md5_body(request.body, length)
 
         paths.transaction do
-          paths.resource_at(id: path[:id]).delete
-          paths.put_resource(id: path[:id], length:, type:, content:, etag:)
+          paths.clear_resource(pid: path[:id])
+          paths.put_resource(pid: path[:id], length:, type:, content:, etag:)
         end
 
         complete 204

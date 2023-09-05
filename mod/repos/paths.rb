@@ -30,12 +30,16 @@ module Repos
       paths.where(id:).delete
     end
 
-    def resource_at(pid:) = resources.where(pid:)
+    def resource_at(pid:) = resources.where(pid:).first
 
-    def put_resource(id:, length:, type:, content:, etag:)
+    def clear_resource(pid:)
+      resources.where(pid:).delete
+    end
+
+    def put_resource(pid:, length:, type:, content:, etag:)
       resources
         .returning(:id)
-        .insert(id: SQL.uuid, pid: id, length:, type:, content:, etag:)
+        .insert(id: SQL.uuid, pid:, length:, type:, content:, etag:)
         .then { _1&.first&.[](:id) }
     end
 
