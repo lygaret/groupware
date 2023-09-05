@@ -12,12 +12,6 @@ module Dav
 
       attr_reader :request, :response
 
-      OPTIONS_SUPPORTED_METHODS = %w[
-        OPTIONS HEAD GET PUT DELETE
-        MKCOL COPY MOVE LOCK UNLOCK
-        PROPFIND PROPPATCH
-      ].join(",").freeze
-
       def with_env(env)
         @request  = Dav::Request.new(env)
         @response = Rack::Response.new

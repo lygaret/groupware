@@ -11,9 +11,14 @@ module Dav
       include System::Import[
         "db.connection",
         "repos.paths",
-        "repos.resources",
         "logger"
       ]
+
+      OPTIONS_SUPPORTED_METHODS = %w[
+        OPTIONS HEAD GET PUT DELETE
+        MKCOL COPY MOVE LOCK UNLOCK
+        PROPFIND PROPPATCH
+      ].join(",").freeze
 
       def options(*)
         response["Allow"] = OPTIONS_SUPPORTED_METHODS
@@ -31,7 +36,7 @@ module Dav
           # no content for a collection
           complete 204
         else
-          resource = resources.find_by_path(pid: path[:id]).first
+          resource = paths.resource_at(pid: path[:id]).first
           if resource.nil?
             complete 204 # no content at path!
           else
@@ -93,18 +98,18 @@ module Dav
         invalid! "parent must be a collection", status: 409 if ppath[:ctype].nil?
 
         connection.transaction do
-          gpid = ppath[:id]
+          pid  = ppath[:id]
           path = request.path.basename
 
           # the new path is the parent of the resource
-          pid  = paths.insert(pid: gpid, path:, ctype: nil)
+          id = paths.insert(pid:, path:, ctype: nil)
 
           type          = request.dav_content_type
           length        = request.dav_content_length
           content, etag = read_md5_body(request.body, length)
 
           # insert the resource at that path
-          resources.insert(pid:, length:, type:, content:, etag:)
+          paths.put_resource(id:, length:, type:, content:, etag:)
         end
 
         complete 201
@@ -118,8 +123,8 @@ module Dav
         content, etag = read_md5_body(request.body, length)
 
         connection.transaction do
-          resources.find_by_path(pid: path[:id]).delete
-          resources.insert(pid: path[:id], length:, type:, content:, etag:)
+          paths.resource_at(id: path[:id]).delete
+          paths.put_resource(id: path[:id], length:, type:, content:, etag:)
         end
 
         complete 204
