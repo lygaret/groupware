@@ -14,6 +14,9 @@ System::Container.register_provider(:database) do
     target.start :logger
     target.start :settings
 
+    Sequel.extension :symbol_aref
+    Sequel.extension :symbol_as
+
     db = Sequel.connect(
       target[:settings].database_url,
       logger: target[:logger].child({ system: "sequel" }),

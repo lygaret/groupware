@@ -61,7 +61,7 @@ module Dav
             end
           end
 
-          dest && Pathname.from_path(dest)
+          dest && Pathname.parse(dest)
         end
     end
 

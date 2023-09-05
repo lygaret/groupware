@@ -83,6 +83,9 @@ module Dav
         complete 204 # no content
       end
 
+      def copy(path:, ppath:) = copy_move path:, ppath:, move: false
+      def move(path:, ppath:) = copy_move path:, ppath:, move: true
+
       private
 
       def put_insert(ppath:)
@@ -120,6 +123,34 @@ module Dav
         end
 
         complete 204
+      end
+
+      def copy_move(path:, ppath:, move:)
+        invalid! "not found", status: 404 if path.nil?
+
+        connection.transaction do
+          dest  = request.dav_destination
+          pdest = paths.at_path(dest.dirname).first
+
+          invalid! "destination root must exist", status: 409           if pdest.nil?
+          invalid! "destination root must be a collection", status: 409 if pdest[:ctype].nil?
+
+          extant = paths.at_path(dest.to_s).first
+          unless extant.nil?
+            invalid! "destination must not already exist", status: 412 unless request.dav_overwrite?
+
+            paths.delete(id: extant[:id])
+          end
+
+          if move
+            paths.move_tree(id: path[:id], dpid: pdest[:id], dpath: dest.basename)
+          else
+            paths.clone_tree(id: path[:id], dpid: pdest[:id], dpath: dest.basename)
+          end
+
+          status = extant.nil? ? 201 : 204
+          complete status
+        end
       end
 
       def read_md5_body(input, len)

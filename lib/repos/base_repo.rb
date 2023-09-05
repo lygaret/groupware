@@ -8,6 +8,9 @@ module Repos
       def self.uuid = Sequel.function(:uuid)
       def self.now  = Sequel.function(:datetime, "now")
 
+      def self.like(...)  = Sequel.like(...)
+      def self.ilike(...) = Sequel.ilike(...)
+
     end
   end
 end
