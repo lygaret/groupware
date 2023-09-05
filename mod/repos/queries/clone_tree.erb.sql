@@ -86,7 +86,7 @@ insert into properties
     prop.xmlattrs,
     prop.content
   from properties prop
-  join temp.resource_clones targets on prop.pid = targets.id;
+  join temp.resource_clones targets on prop.rid = targets.id;
 
 -- and cleanup, in case we somehow multiplexed the temp table
 drop table temp.path_clones;
