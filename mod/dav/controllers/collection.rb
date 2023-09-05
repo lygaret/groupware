@@ -9,7 +9,6 @@ module Dav
     class Collection < BaseController
 
       include System::Import[
-        "db.connection",
         "repos.paths",
         "logger"
       ]
@@ -97,7 +96,7 @@ module Dav
         invalid! "intermediate path not found", status: 409 if ppath.nil?
         invalid! "parent must be a collection", status: 409 if ppath[:ctype].nil?
 
-        connection.transaction do
+        paths.transaction do
           pid  = ppath[:id]
           path = request.path.basename
 
@@ -122,7 +121,7 @@ module Dav
         length        = request.dav_content_length
         content, etag = read_md5_body(request.body, length)
 
-        connection.transaction do
+        paths.transaction do
           paths.resource_at(id: path[:id]).delete
           paths.put_resource(id: path[:id], length:, type:, content:, etag:)
         end
@@ -133,14 +132,14 @@ module Dav
       def copy_move(path:, ppath:, move:)
         invalid! "not found", status: 404 if path.nil?
 
-        connection.transaction do
+        paths.transaction do
           dest  = request.dav_destination
-          pdest = paths.at_path(dest.dirname).first
+          pdest = paths.at_path(dest.dirname)
 
           invalid! "destination root must exist", status: 409           if pdest.nil?
           invalid! "destination root must be a collection", status: 409 if pdest[:ctype].nil?
 
-          extant = paths.at_path(dest.to_s).first
+          extant = paths.at_path(dest.to_s)
           unless extant.nil?
             invalid! "destination must not already exist", status: 412 unless request.dav_overwrite?
 

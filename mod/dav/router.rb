@@ -31,7 +31,7 @@ module Dav
         call_forward(controller, methname, path: nil, ppath: nil, env:)
       else
         # otherwise; look up the path
-        pathrow = paths.at_path(pathname.to_s).first
+        pathrow = paths.at_path(pathname.to_s)
         unless pathrow.nil?
           # if the path exists, use it's inherited controller to handle the method
           controller = find_controller(pathrow)
@@ -43,7 +43,7 @@ module Dav
             call_forward(controller, methname, path: nil, ppath: nil, env:)
           else
             # otherwise; look up the parent
-            parentrow = paths.at_path(pathname.dirname).first
+            parentrow = paths.at_path(pathname.dirname)
             unless parentrow.nil?
               controller = find_controller(parentrow)
               call_forward(controller, methname, path: nil, ppath: parentrow, env:)

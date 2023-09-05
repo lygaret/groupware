@@ -15,7 +15,7 @@ module Repos
 
     def at_path(path)
       filtered_paths = paths_full.where(fullpath: path)
-      paths.join(filtered_paths, id: :id)
+      paths.join(filtered_paths, id: :id).first
     end
 
     def insert(pid:, path:, ctype: nil)

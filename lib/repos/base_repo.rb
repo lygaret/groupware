@@ -12,5 +12,7 @@ module Repos
       def self.ilike(...) = Sequel.ilike(...)
 
     end
+
+    def transaction(&) = connection.transaction(&)
   end
 end
