@@ -11,24 +11,44 @@ module Dav
       include System::Import[
         "db.connection",
         "repos.paths",
+        "repos.resources",
         "logger"
       ]
 
-      def get(path:, ppath:)
+      def options(*)
+        response["Allow"] = OPTIONS_SUPPORTED_METHODS
+        complete 204
+      end
+
+      def head(path:, ppath:)
+        get(path:, ppath:, include_body: false)
+      end
+
+      def get(path:, ppath:, include_body: true)
         invalid! "not found", status: 404 if path.nil?
 
         if path[:ctype]
           # no content for a collection
           complete 204
         else
-          # TODO: get resource + header info
-          invalid! "not implemented", status: 500
-        end
-      end
+          resource = resources.find_by_path(pid: path[:id]).first
+          if resource.nil?
+            complete 204 # no content at path!
+          else
+            headers  = {
+              "Content-Type" => resource[:type],
+              "Content-Length" => resource[:length].to_s,
+              "Last-Modified" => resource[:updated_at] || resource[:created_at],
+              "ETag" => resource[:etag]
+            }
+            headers.reject! { _2.nil? }
 
-      def head(path:, ppath:)
-        status, headers, = get(path:, ppath:)
-        [status, headers, []] # just GET but with no body
+            response.body = [resource[:content]] if include_body
+            response.headers.merge! headers
+
+            complete 200
+          end
+        end
       end
 
       def mkcol(path:, ppath:)
@@ -36,12 +56,15 @@ module Dav
         invalid! "mkcol w/ body is unsupported", status: 415 if request.content_length
 
         # path itself can't already exist
-        invalid! "path already exists", status: 409 unless path.nil?
+        invalid! "path already exists", status: 405 unless path.nil?
 
         # intermediate collections must already exist
-        invalid! "intermediate paths must exist", status: 409 if ppath.nil?
+        # but at the root, there's no parent
+        has_inter   = !ppath.nil?
+        has_inter ||= request.path.dirname == ""
+        invalid! "intermediate paths must exist", status: 409 unless has_inter
 
-        paths.insert(pid: ppath[:id], path: request.path.basename, ctype: "collection")
+        paths.insert(pid: ppath&.[](:id), path: request.path.basename, ctype: "collection")
         complete 201 # created
       end
 
@@ -49,7 +72,7 @@ module Dav
         if path.nil?
           put_insert(ppath:)
         else
-          put_update(path:, ppath:)
+          put_update(path:)
         end
       end
 
@@ -63,10 +86,10 @@ module Dav
       private
 
       def put_insert(ppath:)
-        invalid! "not found", status: 404 if ppath.nil?
+        invalid! "intermediate path not found", status: 409 if ppath.nil?
         invalid! "parent must be a collection", status: 409 if ppath[:ctype].nil?
 
-        transaction do
+        connection.transaction do
           gpid = ppath[:id]
           path = request.path.basename
 
@@ -82,6 +105,21 @@ module Dav
         end
 
         complete 201
+      end
+
+      def put_update(path:)
+        invalid "not found", status: 404 if path.nil?
+
+        type          = request.dav_content_type
+        length        = request.dav_content_length
+        content, etag = read_md5_body(request.body, length)
+
+        connection.transaction do
+          resources.find_by_path(pid: path[:id]).delete
+          resources.insert(pid: path[:id], length:, type:, content:, etag:)
+        end
+
+        complete 204
       end
 
       def read_md5_body(input, len)

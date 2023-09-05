@@ -7,6 +7,8 @@ require "rackup"
 require_relative "../config/system"
 System::Container.finalize!
 
+require "dav/middleware/_dav_header"
+
 logger   = System::Container["logger"]
 settings = System::Container["settings"]
 env      = System::Container.env
@@ -21,6 +23,7 @@ app = Rack::Builder.new do
   use Rack::ContentLength
   use Rack::Deflater
 
+  use Dav::Middleware::DavHeader, support: "1, 2, 3"
   run System::Container["dav.router"]
 end
 

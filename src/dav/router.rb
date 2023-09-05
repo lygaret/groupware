@@ -48,8 +48,8 @@ module Dav
               controller = find_controller(parentrow)
               call_forward(controller, methname, path: nil, ppath: parentrow, env:)
             else
-              # otherwise it's completely not for us, 404
-              respond methname, body, status: 404
+              # otherwise it's "missing intermediates", and is likely a 409
+              respond methname, "not found", status: 409
             end
           end
         end
@@ -59,10 +59,10 @@ module Dav
     private
 
     def find_controller(pathrow) = System::Container["dav.controllers.#{pathrow[:pctype]}"]
-    def root_controller          = System::Container["dav.controllers.root"]
+    def root_controller          = System::Container["dav.controllers.collection"]
 
     def call_forward(controller, methname, path:, ppath:, env:)
-      return respond("method not supported", status: 400) unless controller.respond_to? methname
+      return respond(methname, "method not supported", status: 400) unless controller.respond_to? methname
 
       begin
         controller.with_env(env).send(methname, path:, ppath:)

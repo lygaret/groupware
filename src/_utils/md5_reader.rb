@@ -12,7 +12,7 @@ module Utils
       @hash  = Digest::MD5.new
     end
 
-    def hash = @hash.hexdigest
+    def hexdigest = @hash.hexdigest
 
     # reader methods as expected by rack body readers
 

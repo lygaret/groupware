@@ -11,11 +11,11 @@ module System
           @excluded_fields.each { |f| data.delete(f) }
 
           msg     = data.delete(:msg)
-          syst    = data.delete(:system)&.then { "[#{_1.to_s.rjust(10)}]" } || "".rjust(12)
+          syst    = data.delete(:system)&.then { _1.to_s.rjust(8) } || "".rjust(8)
           sanserr = data.except(:err)
           level   = @plain ? severity : colored_level(severity)
 
-          strs    = ["#{level} [#{time.utc.strftime('%Y.%j %H%M%S.%L')}]#{syst}: #{msg} (#{sanserr.inspect})"]
+          strs    = ["#{level}#{syst} [#{time.utc.strftime('%H%M%S.%L')}]: #{msg} #{sanserr.inspect}"]
 
           err_str = create_err_str(data)
           strs.push err_str if err_str
