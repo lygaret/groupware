@@ -62,7 +62,7 @@ module Dav
     def root_controller          = System::Container["dav.controllers.collection"]
 
     def call_forward(controller, methname, path:, ppath:, env:)
-      return respond(methname, "method not supported", status: 400) unless controller.respond_to? methname
+      return respond(methname, "method not supported", status: 405) unless controller.respond_to? methname
 
       begin
         controller.with_env(env).send(methname, path:, ppath:)
