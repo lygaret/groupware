@@ -7,7 +7,7 @@ require "rackup"
 require_relative "../config/system"
 System::Container.finalize!
 
-require "dav/middleware/_dav_header"
+require "dav/middleware/dav_header"
 
 logger   = System::Container["logger"]
 settings = System::Container["settings"]

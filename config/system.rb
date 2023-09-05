@@ -24,12 +24,12 @@ module System
       config.provider_dirs     = ["config/providers"]
       config.registrations_dir = "config/registrations"
 
-      config.component_dirs.add "src" do |dir|
-        dir.auto_register = proc do |component|
-          # private modules start with _
-          # registered, then, have no private components
-          component.identifier.key.split(".").none? { _1.start_with? "_" }
-        end
+      config.component_dirs.add "mod" do |dir|
+        dir.auto_register = true
+      end
+
+      config.component_dirs.add "lib" do |dir|
+        dir.auto_register = false
       end
     end
 

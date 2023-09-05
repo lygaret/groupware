@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require "_utils/md5_reader"
-require "dav/controllers/_base_controller"
+require "utils/md5_reader"
+require "dav/controllers/base_controller"
 
 module Dav
   module Controllers

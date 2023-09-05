@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "repos/_base_repo"
+require "repos/base_repo"
 
 module Repos
   # the data access layer to the path storage

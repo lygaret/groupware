@@ -2,8 +2,8 @@
 
 require "rack"
 
-require "dav/_errors"
-require "dav/_request"
+require "dav/errors"
+require "dav/request"
 
 module Dav
   module Controllers

@@ -3,8 +3,8 @@
 require "rack"
 require "rack/constants"
 
-require "dav/_errors"
-require "dav/_pathname"
+require "dav/errors"
+require "dav/pathname"
 
 module Dav
   # Rack application which routes requests to the correct DAV controller.

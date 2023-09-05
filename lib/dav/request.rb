@@ -2,7 +2,7 @@
 
 require "rack"
 require "rack/mime"
-require "dav/_pathname"
+require "dav/pathname"
 
 module Dav
   # DAV specific request overload - used to give easy accessors
