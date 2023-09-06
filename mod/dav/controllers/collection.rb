@@ -3,7 +3,6 @@
 require "nokogiri"
 
 require "dav/controllers/base_controller"
-require "utils/md5_reader"
 
 module Dav
   module Controllers
@@ -167,9 +166,10 @@ module Dav
           # the new path is the parent of the resource
           id = paths.insert(pid:, path:, ctype: nil)
 
-          type          = request.dav_content_type
-          length        = request.dav_content_length
-          content, etag = read_md5_body(request.body, length)
+          type     = request.dav_content_type
+          length   = request.dav_content_length
+          content  = request.md5_body.gets
+          etag     = request.md5_body.hexdigest
 
           # insert the resource at that path
           paths.put_resource(pid: id, length:, type:, content:, etag:)
@@ -181,9 +181,10 @@ module Dav
       def put_update(path:)
         invalid "not found", status: 404 if path.nil?
 
-        type          = request.dav_content_type
-        length        = request.dav_content_length
-        content, etag = read_md5_body(request.body, length)
+        type    = request.dav_content_type
+        length  = request.dav_content_length
+        content = request.md5_body.read(length)
+        etag    = request.md5_body.hexdigest
 
         paths.transaction do
           paths.clear_resource(pid: path[:id])
@@ -332,13 +333,6 @@ module Dav
           status = extant.nil? ? 201 : 204
           complete status
         end
-      end
-
-      def read_md5_body(input, len)
-        body = Utils::MD5Reader.new(input)
-        data = body.read(len)
-
-        [data, body.hexdigest]
       end
 
     end

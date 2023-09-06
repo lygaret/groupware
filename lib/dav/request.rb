@@ -3,6 +3,7 @@
 require "rack"
 require "rack/mime"
 require "dav/pathname"
+require "utils/md5_reader"
 
 module Dav
   # DAV specific request overload - used to give easy accessors
@@ -14,8 +15,12 @@ module Dav
 
     DAV_DEPTHS = %w[infinity 0 1].freeze
 
-    # @return Pathname, the pathname for the current request
     def path = env["dav.pathname"]
+
+    # a body wrapper which computes the md5 as it's being read.
+    def md5_body
+      @md5_body ||= Utils::MD5Reader.new(body)
+    end
 
     # typed body readers
 
