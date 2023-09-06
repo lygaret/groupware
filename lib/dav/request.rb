@@ -32,9 +32,11 @@ module Dav
       @xml_body ||=
         begin
           content = body.gets
-          return nil if content.nil? || content == ""
-
-          Nokogiri::XML.parse(content) { |config| config.strict.pedantic.nsclean }
+          if content.nil? || content == ""
+            nil
+          else
+            Nokogiri::XML.parse(content) { |config| config.strict.pedantic.nsclean }
+          end
         rescue StandardError => e
           raise MalformedRequestError, e
         end

@@ -198,9 +198,9 @@ module Dav
         properties = paths.properties_at(pid: path[:id], depth:)
         builder    = Nokogiri::XML::Builder.new do |xml|
           xml["d"].multistatus("xmlns:d" => "DAV:") do
-            properties.each do |path, props|
+            properties.each do |fullpath, props|
               xml["d"].response do
-                xml["d"].href path
+                xml["d"].href fullpath
                 render_propstat_row(xml:, status: "200 OK", props:) do |row|
                   render_row(xml:, row:, shallow:)
                 end
@@ -238,11 +238,11 @@ module Dav
         # iterate through properties while building the xml
         builder = Nokogiri::XML::Builder.new do |xml|
           xml["d"].multistatus("xmlns:d" => "DAV:") do
-            properties.each do |path, props|
+            properties.each do |fullpath, props|
               missing = expected.dup # track missing items _per path_
 
               xml["d"].response do
-                xml["d"].href path
+                xml["d"].href fullpath
 
                 # found keys
                 unless props.empty?

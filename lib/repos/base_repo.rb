@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 module Repos
+  # Default super class for repositories
   class BaseRepo
+
     # Sequel helpers, so we don't have to write Sequel so often.
     module SQL
 
@@ -16,5 +18,6 @@ module Repos
     end
 
     def transaction(&) = connection.transaction(&)
+
   end
 end

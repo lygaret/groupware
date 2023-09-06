@@ -33,6 +33,9 @@ Metrics/ModuleLength:
 Metrics/PerceivedComplexity:
   Enabled: false
 
+Style/KeywordParametersOrder:
+  Enabled: false
+
 Style/StringLiterals:
   EnforcedStyle: double_quotes
 

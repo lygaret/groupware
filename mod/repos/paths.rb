@@ -69,7 +69,7 @@ module Repos
     def clone_tree_sql
       @clone_tree_sql ||= begin
         path = File.join(__dir__, "./queries/clone_tree.erb.sql")
-        ERB.new(File.read path)
+        ERB.new(File.read(path))
       end
     end
 
@@ -108,7 +108,7 @@ module Repos
             .select(:id, :fullpath, Sequel[0].as(:depth), :ctype, :pctype),
           connection[:paths_full]
             .join(:descendents, id: :pid)
-            .where{:descendents[:depth] < depth}
+            .where { :descendents[:depth] < depth }
             .select(:paths_full[:id])
             .select_append(:paths_full[:fullpath])
             .select_append(:descendents[:depth] + 1)
@@ -123,28 +123,28 @@ module Repos
 
       unless pid.nil?
         scopes << with_descendents(pid, depth:)
-          .join_table(:left_outer, filtered_properties(filters), { pid: :id }, table_alias: :properties)
-          .select_all(:properties)
-          .select_append(:fullpath)
+                    .join_table(:left_outer, filtered_properties(filters), { pid: :id }, table_alias: :properties)
+                    .select_all(:properties)
+                    .select_append(:fullpath)
 
         scopes << with_descendents(pid, depth:)
-          .from_self(alias: :paths)
-          .join_table(:inner, :resources,       { :resources[:pid] => :paths[:id] })
-          .join_table(:left_outer, :properties, { :properties[:rid] => :resources[:id]})
-          .select_all(:properties)
-          .select_append(:fullpath)
+                    .from_self(alias: :paths)
+                    .join_table(:inner, :resources,       { :resources[:pid] => :paths[:id] })
+                    .join_table(:left_outer, :properties, { :properties[:rid] => :resources[:id] })
+                    .select_all(:properties)
+                    .select_append(:fullpath)
       end
 
       unless rid.nil?
         scopes << resources
-          .where(id: rid)
-          .join_table(:inner, :paths_full, { :paths_full[:id] => resources[:pid] })
-          .join_table(:left_outer, :properties, { :properties[:rid] => :resources[:id]})
-          .select_all(:properties)
-          .select_append(:fullpath)
+                    .where(id: rid)
+                    .join_table(:inner, :paths_full, { :paths_full[:id] => resources[:pid] })
+                    .join_table(:left_outer, :properties, { :properties[:rid] => :resources[:id] })
+                    .select_all(:properties)
+                    .select_append(:fullpath)
       end
 
-      scope = scopes.reduce { |memo, scope| memo.union(scope) }
+      scope = scopes.reduce { |memo, s| memo.union(s) }
       # debugger
 
       scope.each_with_object({}) do |row, results|
