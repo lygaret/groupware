@@ -223,7 +223,11 @@ module Dav
       def propfind_prop(path:, depth:, prop:)
         # because we have to report on properties we couldn't find,
         # we need to maintain a set of properties we've matched, vs those expected
-        expected   = prop.element_children.map do |p|
+        # also use this opportunity to validate for bad namespaces
+        expected = prop.element_children.map do |p|
+          badname = p.namespace.nil? && p.name.include?(":")
+          invalid! "invalid xmlns/name #{p.name}, xmlns=''", status: 400 if badname
+
           { xmlns: p.namespace&.href || "", xmlel: p.name }
         end
 
