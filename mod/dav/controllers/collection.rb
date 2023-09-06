@@ -99,18 +99,17 @@ module Dav
 
       def propfind(path:, ppath:)
         invalid! "not found", status: 404 if path.nil?
-        invalid! "expected xml body", status: 415 unless is_xml_body?(allow_nil: true)
+        invalid! "expected xml body", status: 415 unless request.xml_body?(allow_nil: true)
 
         # newer rfc allows not supporting infinite propfind
         depth = request.dav_depth
         invalid! "Depth: infinity is not supported", status: 409 if depth == :infinity
 
         # an empty body means allprop
-        body = request.body.gets
-        return propfind_allprop(path:, depth:, shallow: false) if body.nil? || body == ""
+        doc = request.xml_body
+        return propfind_allprop(path:, depth:, shallow: false) if doc.nil?
 
         # otherwise, fetch the request type and branch on it
-        doc  = read_xml_body body
         root = doc.at_css("d|propfind:only-child", DAV_NSDECL)
         invalid! "invalid xml, missing propfind", status: 400 if root.nil?
 
@@ -128,9 +127,9 @@ module Dav
 
       def proppatch(path:, ppath:)
         invalid! "not found", status: 404 if path.nil?
-        invalid! "expected xml body", status: 415 unless is_xml_body?(allow_nil: true)
+        invalid! "expected xml body", status: 415 unless request.xml_body?(allow_nil: true)
 
-        doc       = read_xml_body request.body.gets
+        doc       = request.xml_body
         update_el = doc.at_css("d|propertyupdate:only-child", DAV_NSDECL)
         invalid! "expected propertyupdate in xml root", status: 415 if update_el.nil?
 
@@ -209,11 +208,11 @@ module Dav
           end
         end
 
-        puts "PROPFIND ALLPROPS (depth #{depth})"
-        puts properties
-        puts "resp------------------"
-        puts builder.to_xml
-        puts "----------------------"
+        # puts "PROPFIND ALLPROPS (depth #{depth})"
+        # puts properties
+        # puts "resp------------------"
+        # puts builder.to_xml
+        # puts "----------------------"
 
         response.status          = 207
         response.body            = [builder.to_xml]
@@ -263,11 +262,11 @@ module Dav
           end
         end
 
-        puts "PROPFIND PROPS (depth #{depth})"
-        puts properties
-        puts "resp------------------"
-        puts builder.to_xml
-        puts "----------------------"
+        # puts "PROPFIND PROPS (depth #{depth})"
+        # puts properties
+        # puts "resp------------------"
+        # puts builder.to_xml
+        # puts "----------------------"
 
         response.status          = 207
         response.body            = [builder.to_xml]
@@ -336,20 +335,6 @@ module Dav
         data = body.read(len)
 
         [data, body.hexdigest]
-      end
-
-      def is_xml_body?(allow_nil: false)
-        (allow_nil && request.content_type.nil?) ||
-          request.content_type =~ %r{(text|application)/xml}
-      end
-
-      def read_xml_body(input)
-        begin
-          Nokogiri::XML.parse(input) { |config| config.strict.pedantic.nsclean }
-        rescue StandardError => e
-          debugger
-          invalid! e.message, status: 400
-        end
       end
 
     end

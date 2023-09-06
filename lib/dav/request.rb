@@ -17,6 +17,24 @@ module Dav
     # @return Pathname, the pathname for the current request
     def path = env["dav.pathname"]
 
+    # typed body readers
+
+    def xml_body?(allow_nil: false)
+      (allow_nil && content_type.nil?) || content_type =~ %r{(text|application)/xml}
+    end
+
+    def xml_body
+      @xml_body ||=
+        begin
+          content = body.gets
+          return nil if content.nil? || content == ""
+
+          Nokogiri::XML.parse(content) { |config| config.strict.pedantic.nsclean }
+        rescue StandardError => e
+          raise MalformedRequestError, e
+        end
+    end
+
     # header access per DAV spec
 
     # @return Integer, content length, 0 if the header is missing
