@@ -72,7 +72,8 @@ module Dav
 
         paths.transaction do
           id = paths.insert(pid: ppath&.[](:id), path: request.path.basename, ctype: "collection")
-          paths.set_explicit_property(pid: id, user: false, xmlel: "resourcetype", content: "<collection/>")
+          paths.set_explicit_properties(pid: id, user: false,
+                                        props: [{ xmlel: "resourcetype", content: "<collection/>" }])
         end
 
         complete 201 # created
@@ -168,11 +169,12 @@ module Dav
 
           type     = request.dav_content_type
           length   = request.dav_content_length
+          lang     = request.get_header("content-language")
           content  = request.md5_body.gets
           etag     = request.md5_body.hexdigest
 
           # insert the resource at that path
-          paths.put_resource(pid: id, length:, type:, content:, etag:)
+          paths.insert_resource(pid: id, path:, type:, lang:, length:, content:, etag:)
         end
 
         complete 201
@@ -183,14 +185,11 @@ module Dav
 
         type    = request.dav_content_type
         length  = request.dav_content_length
+        lang    = request.get_header("content-language")
         content = request.md5_body.read(length)
         etag    = request.md5_body.hexdigest
 
-        paths.transaction do
-          paths.clear_resource(pid: path[:id])
-          paths.put_resource(pid: path[:id], length:, type:, content:, etag:)
-        end
-
+        paths.update_resource(pid: path[:id], type:, lang:, length:, content:, etag:)
         complete 204
       end
 

@@ -8,6 +8,7 @@ Sequel.migration do
         , pid        TEXT REFERENCES paths(id) ON DELETE CASCADE
 
         , type       TEXT
+        , lang       TEXT
         , length     INTEGER
         , content    BLOB
         , etag       TEXT

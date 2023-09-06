@@ -40,11 +40,44 @@ module Repos
       resources.where(pid:).delete
     end
 
-    def put_resource(pid:, length:, type:, content:, etag:)
-      resources
+    def insert_resource(pid:, path:, type:, lang:, length:, content:, etag:)
+      created_at = Time.now.utc
+      updated_at = nil
+
+      rid = resources
+              .returning(:id)
+              .insert(id: SQL.uuid, pid:, type:, lang:, length:, content:, etag:, created_at:, updated_at:)
+              .then { _1&.first&.[](:id) }
+
+      props = [
+        { xmlel: "displayname",        content: CGI.unescape(path) },
+        { xmlel: "getcontentlanguage", content: lang },
+        { xmlel: "getcontentlength",   content: length },
+        { xmlel: "getcontenttype",     content: type },
+        { xmlel: "getetag",            content: etag },
+        { xmlel: "getlastmodified",    content: updated_at },
+        { xmlel: "creationdate",       content: created_at }
+      ]
+      set_explicit_properties(rid:, user: false, props:)
+    end
+
+    def update_resource(pid:, type:, lang:, length:, content:, etag:)
+      updated_at = Time.now.utc
+
+      rid = resources
+        .where(pid:)
         .returning(:id)
-        .insert(id: SQL.uuid, pid:, length:, type:, content:, etag:)
-        .then { _1&.first&.[](:id) }
+        .update(type:, lang:, length:, content:, etag:, updated_at:)
+        .then { _1.first&.[](:id) }
+
+      props = [
+        { xmlel: "getcontentlanguage", content: lang },
+        { xmlel: "getcontentlength",   content: length },
+        { xmlel: "getcontenttype",     content: type },
+        { xmlel: "getetag",            content: etag },
+        { xmlel: "getlastmodified",    content: updated_at }
+      ]
+      set_explicit_properties(rid:, user: false, props:)
     end
 
     # moves the tree at spid now be under dpid, changing it's name
@@ -84,13 +117,20 @@ module Repos
         .insert(pid:, rid:, user:, xmlns:, xmlel:, xmlattrs:, content:)
     end
 
-    def set_explicit_property(pid: nil, rid: nil, user:, xmlns: "DAV:", xmlel:, xmlattrs: {}, content:)
-      content  = Nokogiri::XML.fragment(content).to_xml
-      xmlattrs = JSON.dump xmlattrs.to_a
+    def set_explicit_properties(pid: nil, rid: nil, user:, props: [])
+      props = props.map do |prop|
+        [
+          pid, rid, user,
+          prop.fetch(:xmlns, "DAV:"),
+          prop[:xmlel] || (raise ArgumentError, "missing xmlel column"),
+          prop.fetch(:xmlattrs, {}).then { JSON.dump _1.to_a },
+          prop.fetch(:content, "").then { Nokogiri::XML.fragment(_1).to_xml }
+        ]
+      end
 
       connection[:properties]
         .insert_conflict(:replace)
-        .insert(pid:, rid:, user:, xmlns:, xmlel:, xmlattrs:, content:)
+        .import(%i[pid rid user xmlns xmlel xmlattrs content], props)
     end
 
     def clear_property(pid: nil, rid: nil, user: true, xmlns:, xmlel:)
@@ -122,6 +162,7 @@ module Repos
       scopes = []
 
       unless pid.nil?
+        # properties both of the path _and_ the resource _at_ that path
         scopes << with_descendents(pid, depth:)
                     .join_table(:left_outer, filtered_properties(filters), { pid: :id }, table_alias: :properties)
                     .select_all(:properties)
@@ -129,23 +170,23 @@ module Repos
 
         scopes << with_descendents(pid, depth:)
                     .from_self(alias: :paths)
-                    .join_table(:inner, :resources,       { :resources[:pid] => :paths[:id] })
-                    .join_table(:left_outer, :properties, { :properties[:rid] => :resources[:id] })
+                    .join_table(:inner, :resources, { :resources[:pid] => :paths[:id] })
+                    .join_table(:left_outer, filtered_properties(filters), { rid: :id }, table_alias: :properties)
                     .select_all(:properties)
                     .select_append(:fullpath)
       end
 
       unless rid.nil?
+        # properties just of resource
         scopes << resources
                     .where(id: rid)
                     .join_table(:inner, :paths_full, { :paths_full[:id] => resources[:pid] })
-                    .join_table(:left_outer, :properties, { :properties[:rid] => :resources[:id] })
+                    .join_table(:left_outer, filtered_properties(filters), { rid: :id }, table_alias: :properties)
                     .select_all(:properties)
                     .select_append(:fullpath)
       end
 
       scope = scopes.reduce { |memo, s| memo.union(s) }
-      # debugger
 
       scope.each_with_object({}) do |row, results|
         results[row[:fullpath]] ||= []

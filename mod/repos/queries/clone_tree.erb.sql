@@ -54,6 +54,7 @@ insert into resources
     targets.newid,
     targets.newpid,
     res.type,
+    res.lang,
     res.length,
     res.content,
     res.etag,
