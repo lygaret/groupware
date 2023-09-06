@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "json"
+require "nokogiri"
+
 require "repos/base_repo"
 
 module Repos
@@ -12,6 +15,7 @@ module Repos
     def paths_full = connection[:paths_full]
 
     def resources  = connection[:resources]
+    def properties = connection[:properties]
 
     def at_path(path)
       filtered_paths = paths_full.where(fullpath: path)
@@ -66,6 +70,106 @@ module Repos
       @clone_tree_sql ||= begin
         path = File.join(__dir__, "./queries/clone_tree.erb.sql")
         ERB.new(File.read path)
+      end
+    end
+
+    def set_property(pid: nil, rid: nil, user: true, prop:)
+      xmlns    = prop.namespace&.href || ""
+      xmlel    = prop.name
+      xmlattrs = JSON.dump prop.attributes.to_a
+      content  = Nokogiri::XML.fragment(prop.children).to_xml
+
+      connection[:properties]
+        .insert_conflict(:replace)
+        .insert(pid:, rid:, user:, xmlns:, xmlel:, xmlattrs:, content:)
+    end
+
+    def set_explicit_property(pid: nil, rid: nil, user:, xmlns: "DAV:", xmlel:, xmlattrs: {}, content:)
+      content  = Nokogiri::XML.fragment(content).to_xml
+      xmlattrs = JSON.dump xmlattrs.to_a
+
+      connection[:properties]
+        .insert_conflict(:replace)
+        .insert(pid:, rid:, user:, xmlns:, xmlel:, xmlattrs:, content:)
+    end
+
+    def clear_property(pid: nil, rid: nil, user: true, xmlns:, xmlel:)
+      connection[:properties]
+        .where(pid:, rid:, user:, xmlns:, xmlel:)
+        .delete
+    end
+
+    def with_descendents(pid, depth:)
+      connection[:descendents]
+        .with_recursive(
+          :descendents,
+          connection[:paths_full]
+            .where(id: pid)
+            .select(:id, :fullpath, Sequel[0].as(:depth), :ctype, :pctype),
+          connection[:paths_full]
+            .join(:descendents, id: :pid)
+            .where{:descendents[:depth] < depth}
+            .select(:paths_full[:id])
+            .select_append(:paths_full[:fullpath])
+            .select_append(:descendents[:depth] + 1)
+            .select_append(:paths_full[:ctype])
+            .select_append(:paths_full[:pctype]),
+          args: %i[id fullpath depth ctype pctype]
+        )
+    end
+
+    def properties_at(pid: nil, rid: nil, depth:, filters: nil)
+      scopes = []
+
+      unless pid.nil?
+        scopes << with_descendents(pid, depth:)
+          .join_table(:left_outer, filtered_properties(filters), { pid: :id }, table_alias: :properties)
+          .select_all(:properties)
+          .select_append(:fullpath)
+
+        scopes << with_descendents(pid, depth:)
+          .from_self(alias: :paths)
+          .join_table(:inner, :resources,       { :resources[:pid] => :paths[:id] })
+          .join_table(:left_outer, :properties, { :properties[:rid] => :resources[:id]})
+          .select_all(:properties)
+          .select_append(:fullpath)
+      end
+
+      unless rid.nil?
+        scopes << resources
+          .where(id: rid)
+          .join_table(:inner, :paths_full, { :paths_full[:id] => resources[:pid] })
+          .join_table(:left_outer, :properties, { :properties[:rid] => :resources[:id]})
+          .select_all(:properties)
+          .select_append(:fullpath)
+      end
+
+      scope = scopes.reduce { |memo, scope| memo.union(scope) }
+      # debugger
+
+      scope.each_with_object({}) do |row, results|
+        results[row[:fullpath]] ||= []
+        next if row[:pid].nil? && row[:rid].nil? # nil object from left outer join
+
+        results[row[:fullpath]] << row
+      end
+    end
+
+    def blobify_data_content(data)
+      return data unless data.key? :content
+      return data if data[:content].nil?
+
+      data.merge(content: Sequel::SQL::Blob.new(data[:content]))
+    end
+
+    # returns properties_all, filtered to the given set of property xmlns/xmlel
+    def filtered_properties(filters)
+      if filters
+        # reduce the filters over `or`, false is the identity there
+        initial = properties.where(false)
+        filters.reduce(initial) { |scope, filter| scope.or filter }
+      else
+        connection[:properties]
       end
     end
 

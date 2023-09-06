@@ -11,6 +11,8 @@ module Repos
       def self.like(...)  = Sequel.like(...)
       def self.ilike(...) = Sequel.ilike(...)
 
+      def self.coalesce(...) = Sequel.function(:coalesce, ...)
+
     end
 
     def transaction(&) = connection.transaction(&)

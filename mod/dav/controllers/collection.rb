@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
-require "utils/md5_reader"
+require "nokogiri"
+
 require "dav/controllers/base_controller"
+require "utils/md5_reader"
 
 module Dav
   module Controllers
@@ -12,6 +14,8 @@ module Dav
         "repos.paths",
         "logger"
       ]
+
+      DAV_NSDECL = { d: "DAV:" }.freeze
 
       OPTIONS_SUPPORTED_METHODS = %w[
         OPTIONS HEAD GET PUT DELETE
@@ -67,7 +71,11 @@ module Dav
         has_inter ||= request.path.dirname == ""
         invalid! "intermediate paths must exist", status: 409 unless has_inter
 
-        paths.insert(pid: ppath&.[](:id), path: request.path.basename, ctype: "collection")
+        paths.transaction do
+          id = paths.insert(pid: ppath&.[](:id), path: request.path.basename, ctype: "collection")
+          paths.set_explicit_property(pid: id, user: false, xmlel: "resourcetype", content: "<collection/>")
+        end
+
         complete 201 # created
       end
 
@@ -88,6 +96,64 @@ module Dav
 
       def copy(path:, ppath:) = copy_move path:, ppath:, move: false
       def move(path:, ppath:) = copy_move path:, ppath:, move: true
+
+      def propfind(path:, ppath:)
+        invalid! "not found", status: 404 if path.nil?
+        invalid! "expected xml body", status: 415 unless is_xml_body?(allow_nil: true)
+
+        # newer rfc allows not supporting infinite propfind
+        depth = request.dav_depth
+        invalid! "Depth: infinity is not supported", status: 409 if depth == :infinity
+
+        # an empty body means allprop
+        body = request.body.gets
+        return propfind_allprop(path:, depth:, shallow: false) if body.nil? || body == ""
+
+        # otherwise, fetch the request type and branch on it
+        doc  = read_xml_body body
+        root = doc.at_css("d|propfind:only-child", DAV_NSDECL)
+        invalid! "invalid xml, missing propfind", status: 400 if root.nil?
+
+        allprop = root.at_css("d|allprop", DAV_NSDECL)
+        return propfind_allprop(path:, depth:, shallow: false) unless allprop.nil?
+
+        propname = root.at_css("d|propname", DAV_NSDECL)
+        return propfind_allprop(path:, depth:, propname:, shallow: true) unless propname.nil?
+
+        prop = root.at_css("d|prop", DAV_NSDECL)
+        return propfind_prop(path:, depth:, prop:) unless prop.nil?
+
+        invalid! "expected at least one of <allprop>,<propname>,<prop>", status: 400
+      end
+
+      def proppatch(path:, ppath:)
+        invalid! "not found", status: 404 if path.nil?
+        invalid! "expected xml body", status: 415 unless is_xml_body?(allow_nil: true)
+
+        doc       = read_xml_body request.body.gets
+        update_el = doc.at_css("d|propertyupdate:only-child", DAV_NSDECL)
+        invalid! "expected propertyupdate in xml root", status: 415 if update_el.nil?
+
+        paths.transaction do
+          update_el.element_children.each do |child_el|
+            case child_el
+            in { name: "set", namespace: { href: "DAV:" }}
+              child_el.css("> d|prop > *", DAV_NSDECL).each do |prop|
+                paths.set_property(pid: path[:id], prop:)
+              end
+            in {name: "remove", namespace: { href: "DAV:" }}
+              child_el.css("> d|prop > *", DAV_NSDECL).each do |prop|
+                paths.clear_property(pid: path[:id], xmlns: prop.namespace.href, xmlel: prop.name)
+              end
+            else
+              # bad request, not sure what we're doing
+              invalid! "expected only <set> and <remove>!", status: 400
+            end
+          end
+        end
+
+        complete 201
+      end
 
       private
 
@@ -128,6 +194,115 @@ module Dav
         complete 204
       end
 
+      def propfind_allprop(path:, depth:, shallow:)
+        properties = paths.properties_at(pid: path[:id], depth:)
+        builder    = Nokogiri::XML::Builder.new do |xml|
+          xml["d"].multistatus("xmlns:d" => "DAV:") do
+            properties.each do |path, props|
+              xml["d"].response do
+                xml["d"].href path
+                render_propstat_row(xml:, status: "200 OK", props:) do |row|
+                  render_row(xml:, row:, shallow:)
+                end
+              end
+            end
+          end
+        end
+
+        puts "PROPFIND ALLPROPS (depth #{depth})"
+        puts properties
+        puts "resp------------------"
+        puts builder.to_xml
+        puts "----------------------"
+
+        response.status          = 207
+        response.body            = [builder.to_xml]
+        response["Content-Type"] = "application/xml"
+        response.finish
+      end
+
+      def propfind_prop(path:, depth:, prop:)
+        # because we have to report on properties we couldn't find,
+        # we need to maintain a set of properties we've matched, vs those expected
+        expected   = prop.element_children.map do |p|
+          { xmlns: p.namespace&.href || "", xmlel: p.name }
+        end
+
+        # we can additionally use the set of expected properties to filter the db query
+        properties = paths.properties_at(pid: path[:id], depth:, filters: expected)
+
+        # iterate through properties while building the xml
+        builder = Nokogiri::XML::Builder.new do |xml|
+          xml["d"].multistatus("xmlns:d" => "DAV:") do
+            properties.each do |path, props|
+              missing = expected.dup # track missing items _per path_
+
+              xml["d"].response do
+                xml["d"].href path
+
+                # found keys
+                unless props.empty?
+                  render_propstat(xml:, status: "200 OK", props:) do |row|
+                    render_row xml:, row:, shallow: false
+
+                    # track missing so we can report 404 on the others
+                    missing.reject! do |prop|
+                      row[:xmlns] == prop[:xmlns] && row[:xmlel] == prop[:xmlel]
+                    end
+                  end
+                end
+
+                # data still in missing is reported 404
+                unless missing.empty?
+                  render_propstat(xml:, status: "404 Not Found", props: missing) do |prop|
+                    xml.send(prop[:xmlel], xmlns: prop[:xmlns])
+                  end
+                end
+              end
+            end
+          end
+        end
+
+        puts "PROPFIND PROPS (depth #{depth})"
+        puts properties
+        puts "resp------------------"
+        puts builder.to_xml
+        puts "----------------------"
+
+        response.status          = 207
+        response.body            = [builder.to_xml]
+        response["Content-Type"] = "application/xml"
+        response.finish
+      end
+
+      def render_propstat(xml:, status:, props:, &block)
+        xml["d"].propstat do
+          xml["d"].status "HTTP/1.1 #{status}"
+          xml["d"].prop do
+            props.each(&block)
+          end
+        end
+      end
+
+      def render_row(xml:, row:, shallow:)
+        attrs   = Hash.new(JSON.parse(row[:xmlattrs]))
+        content =
+          if shallow
+            nil
+          else
+            lambda do |_|
+              xml.send(:insert, Nokogiri::XML.fragment(row[:content]))
+            end
+          end
+
+        if row[:xmlns] == "DAV:"
+          xml["d"].send(row[:xmlel], **attrs, &content)
+        else
+          attrs.merge! xmlns: row[:xmlns]
+          xml.send(row[:xmlel], **attrs, &content)
+        end
+      end
+
       def copy_move(path:, ppath:, move:)
         invalid! "not found", status: 404 if path.nil?
 
@@ -161,6 +336,20 @@ module Dav
         data = body.read(len)
 
         [data, body.hexdigest]
+      end
+
+      def is_xml_body?(allow_nil: false)
+        (allow_nil && request.content_type.nil?) ||
+          request.content_type =~ %r{(text|application)/xml}
+      end
+
+      def read_xml_body(input)
+        begin
+          Nokogiri::XML.parse(input) { |config| config.strict.pedantic.nsclean }
+        rescue StandardError => e
+          debugger
+          invalid! e.message, status: 400
+        end
       end
 
     end
