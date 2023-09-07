@@ -254,7 +254,7 @@ module Repos
       @clone_tree_sql ||= File.read File.join(__dir__, "./queries/clone_tree.sql")
     end
 
-    # returns properties_all, filtered to the given set of property xmlns/xmlel
+    # returns properties filtered to the given set of property xmlns/xmlel
     def filtered_properties(filters)
       if filters
         # reduce the filters over `or`, false is the identity there
