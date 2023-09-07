@@ -5,7 +5,8 @@
 --tag 'override:Overridden Method'
 --plugin junk
 config/**/*.rb
-src/**/*.rb
+lib/**/*.rb
+mod/**/*.rb
 spec/support/**/*.rb
 -
 README.md

@@ -71,9 +71,12 @@ module Dav
         invalid! "intermediate paths must exist", status: 409 unless has_inter
 
         paths.transaction do
-          id = paths.insert(pid: ppath&.[](:id), path: request.path.basename, ctype: "collection")
-          paths.set_explicit_properties(pid: id, user: false,
-                                        props: [{ xmlel: "resourcetype", content: "<collection/>" }])
+          pid   = ppath&.[](:id)
+          path  = request.path.basename
+          props = [{ xmlel: "resourcetype", content: "<collection/>" }]
+
+          pid = paths.insert(pid:, path:, ctype: "collection")
+          paths.set_properties(pid:, props:, user: false)
         end
 
         complete 201 # created
@@ -135,15 +138,14 @@ module Dav
 
         paths.transaction do
           update_el.element_children.each do |child_el|
+            pid   = path[:id]
+            props = child_el.css("> d|prop > *", DAV_NSDECL)
+
             case child_el
             in { name: "set", namespace: { href: "DAV:" }}
-              child_el.css("> d|prop > *", DAV_NSDECL).each do |prop|
-                paths.set_property(pid: path[:id], prop:)
-              end
+              paths.set_xml_properties(pid:, user: true, props:)
             in {name: "remove", namespace: { href: "DAV:" }}
-              child_el.css("> d|prop > *", DAV_NSDECL).each do |prop|
-                paths.clear_property(pid: path[:id], xmlns: prop.namespace.href, xmlel: prop.name)
-              end
+              paths.remove_xml_properties(pid:, user: true, props:)
             else
               # bad request, not sure what we're doing
               invalid! "expected only <set> and <remove>!", status: 400
@@ -167,6 +169,7 @@ module Dav
           # the new path is the parent of the resource
           id = paths.insert(pid:, path:, ctype: nil)
 
+          display  = CGI.unescape(path)
           type     = request.dav_content_type
           length   = request.dav_content_length
           lang     = request.get_header("content-language")
@@ -174,7 +177,7 @@ module Dav
           etag     = request.md5_body.hexdigest
 
           # insert the resource at that path
-          paths.insert_resource(pid: id, path:, type:, lang:, length:, content:, etag:)
+          paths.put_resource(pid: id, display:, type:, lang:, length:, content:, etag:, creating: true)
         end
 
         complete 201
@@ -183,13 +186,14 @@ module Dav
       def put_update(path:)
         invalid "not found", status: 404 if path.nil?
 
+        display = CGI.unescape(path)
         type    = request.dav_content_type
         length  = request.dav_content_length
         lang    = request.get_header("content-language")
         content = request.md5_body.read(length)
         etag    = request.md5_body.hexdigest
 
-        paths.update_resource(pid: path[:id], type:, lang:, length:, content:, etag:)
+        paths.update_resource(pid: path[:id], display:, type:, lang:, length:, content:, etag:, creating: false)
         complete 204
       end
 

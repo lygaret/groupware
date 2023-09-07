@@ -20,10 +20,10 @@ Sequel.migration do
       );
 
       CREATE        INDEX properties_rid_idx on properties (rid);
-      CREATE UNIQUE INDEX properties_ridfqn_idx on properties (rid, xmlns, xmlel);
+      CREATE UNIQUE INDEX properties_riduserfqn_idx on properties (rid, user, xmlns, xmlel);
 
       CREATE        INDEX properties_pid_idx on properties (pid);
-      CREATE UNIQUE INDEX properties_pidfqn_idx on properties (pid, xmlns, xmlel);
+      CREATE UNIQUE INDEX properties_piduserfqn_idx on properties (pid, user, xmlns, xmlel);
     SQL
   end
 

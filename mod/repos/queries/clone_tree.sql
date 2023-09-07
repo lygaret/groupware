@@ -10,7 +10,7 @@ create table if not exists temp.resource_clones
 -- collect new ids for the subtree we're cloning
 with recursive descendants (id, pid, path, newid) as (
   select paths.id, paths.pid, paths.path, uuid() as newid
-    from paths where id = <%= source_id %>
+    from paths where id = :id
   union
   select paths.id, paths.pid, paths.path, uuid() as newid
     from paths
@@ -21,9 +21,9 @@ insert into temp.path_clones
     child.id,
     child.pid,
     child.newid,
-    coalesce(parent.newid, <%= dest_pid %>),
+    coalesce(parent.newid, :dpid),
     case when parent.id is null
-      then <%= dest_path %>
+      then :dpath
       else child.path
     end
   from      descendants child

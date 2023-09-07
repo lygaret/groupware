@@ -17,6 +17,13 @@ module Repos
 
     end
 
+    def blobify(data)
+      return data if data.nil?
+      return data if data.is_a? Sequel::SQL::Blob
+
+      Sequel::SQL::Blob.new(data)
+    end
+
     def transaction(&) = connection.transaction(&)
 
   end

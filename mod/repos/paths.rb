@@ -11,17 +11,18 @@ module Repos
 
     include System::Import["db.connection"]
 
-    def paths      = connection[:paths]
-    def paths_full = connection[:paths_full]
-
-    def resources  = connection[:resources]
-    def properties = connection[:properties]
-
-    def at_path(path)
-      filtered_paths = paths_full.where(fullpath: path)
+    # @param fullpath [String] the full path to find (eg. "/some/full/path")
+    # @return [Hash] the path row at the given full path
+    def at_path(fullpath)
+      filtered_paths = paths_full.where(fullpath:)
       paths.join(filtered_paths, id: :id).first
     end
 
+    # insert a new path node
+    # @param pid [UUID] the id of the path component to insert underneath
+    # @param path [String] the subpath to create
+    # @param ctype [String] the type of path node to create
+    # @return [UUID] the new id of the path created
     def insert(pid:, path:, ctype: nil)
       paths
         .returning(:id)
@@ -29,95 +30,145 @@ module Repos
         .then { _1&.first&.[](:id) }
     end
 
+    # recursively deletes the path, along with resources and properties
+    # @param id [UUID] the id of the path to delete
     def delete(id:)
       # cascades in the database to delete children
       paths.where(id:).delete
     end
 
+    # moves the tree at spid now be under dpid, changing it's name
+    # @note O(1) time - simply repoints the spid parent pointer
+    # @param id [UUID] the id of the path node representing the subtree to move
+    # @param dpid [UUID] the id of the destination parent node
+    # @param dpath [String] the new path under the parent node
+    def move_tree(id:, dpid:, dpath:)
+      paths.where(id:).update(pid: dpid, path: dpath)
+    end
+
+    # clones the tree at spid under dpid; this is a deep clone, including properties
+    # and resources at those paths.
+    # @note O(n^m) time, because we recurse through resources and properties at least
+    # @param id [UUID] the id of the path node representing the subtree to move
+    # @param dpid [UUID] the id of the destination parent node
+    # @param dpath [String] the new path under the parent node
+    def clone_tree(id:, dpid:, dpath:)
+      connection[clone_tree_sql, id:, dpid:, dpath:].all
+    end
+
+    # @param pid [UUID] the id of the path node to search
+    # @return [Hash] the resource row at the given path id
     def resource_at(pid:) = resources.where(pid:).first
 
+    # clears the resource under the given path
+    # @param pid [UUID] the id of the path node to clear
     def clear_resource(pid:)
       resources.where(pid:).delete
     end
 
-    def insert_resource(pid:, path:, type:, lang:, length:, content:, etag:)
-      created_at = Time.now.utc
-      updated_at = nil
-
-      rid = resources
-              .returning(:id)
-              .insert(id: SQL.uuid, pid:, type:, lang:, length:, content:, etag:, created_at:, updated_at:)
-              .then { _1&.first&.[](:id) }
-
-      props = [
-        { xmlel: "displayname",        content: CGI.unescape(path) },
-        { xmlel: "getcontentlanguage", content: lang },
-        { xmlel: "getcontentlength",   content: length },
-        { xmlel: "getcontenttype",     content: type },
-        { xmlel: "getetag",            content: etag },
-        { xmlel: "getlastmodified",    content: updated_at },
-        { xmlel: "creationdate",       content: created_at }
-      ]
-      set_explicit_properties(rid:, user: false, props:)
-    end
-
-    def update_resource(pid:, type:, lang:, length:, content:, etag:)
+    # put a resource under a given path
+    # @param pid [UUID] the id path of the path node to insert under
+    # @param display [String] the display name of the resource
+    # @param type [String] the mimetype of the resource
+    # @param lang [String] the content language of the resource
+    # @param content [String] the resource content to store -- this is blobified before saving
+    # @param etag [String] the resource's calculated etag
+    # @param creating [Bool] when true, the creation date is managed on the resource
+    def put_resource(pid:, display:, type:, lang:, length:, content:, etag:, creating: true)
+      content    = blobify(content)
       updated_at = Time.now.utc
 
-      rid = resources
-        .where(pid:)
-        .returning(:id)
-        .update(type:, lang:, length:, content:, etag:, updated_at:)
-        .then { _1.first&.[](:id) }
-
-      props = [
+      values  = { id: SQL.uuid, pid:, type:, lang:, length:, content:, etag:, updated_at: }
+      props   = [
+        { xmlel: "displayname",        content: display },
         { xmlel: "getcontentlanguage", content: lang },
         { xmlel: "getcontentlength",   content: length },
         { xmlel: "getcontenttype",     content: type },
         { xmlel: "getetag",            content: etag },
         { xmlel: "getlastmodified",    content: updated_at }
       ]
-      set_explicit_properties(rid:, user: false, props:)
+
+      if creating
+        created_at = Time.now.utc
+
+        props << { xmlel: "creationdate", content: created_at }
+        values[:created_at] = created_at
+      end
+
+      resources
+        .returning(:id)
+        .insert(**values)
+        .then { _1.first[:id] }
+        .then { set_properties(rid: _1, user: false, props:) }
     end
 
-    # moves the tree at spid now be under dpid, changing it's name
-    # simply repoints the spid parent pointer
-    def move_tree(id:, dpid:, dpath:)
-      paths.where(id:).update(pid: dpid, path: dpath)
-    end
-
-    # causes the path tree at spid to be cloned into the path tree at dpid,
-    # with the path component dpath;
+    # fetch a batch of properties on either a path (recursively, up to depth) or a resource (by id),
+    # given a collection of filters.
     #
-    # this is a deep clone, including resources at those paths.
-    def clone_tree(id:, dpid:, dpath:)
-      source_id = paths.literal_append(String.new, Sequel[id])
-      dest_pid  = paths.literal_append(String.new, Sequel[dpid])
-      dest_path = paths.literal_append(String.new, Sequel[dpath])
+    # @return [Hash<fullpath, Array<Row>>]
+    def properties_at(pid: nil, rid: nil, depth:, filters: nil)
+      raise ArgumentError, "only one of pid or rid may be specified!" if pid && rid
+      raise ArgumentError, "one of pid or rid must be specified!" unless pid || rid
 
-      sql = clone_tree_sql.result(binding)
-      connection.run sql
-    end
+      scopes = []
+      unless pid.nil?
+        # properties both of the path _and_ the resource _at_ that path
+        scopes << with_descendents(pid, depth:)
+                    .join_table(:left_outer, filtered_properties(filters), { pid: :id }, table_alias: :properties)
+                    .select_all(:properties)
+                    .select_append(:fullpath)
 
-    def clone_tree_sql
-      @clone_tree_sql ||= begin
-        path = File.join(__dir__, "./queries/clone_tree.erb.sql")
-        ERB.new(File.read(path))
+        scopes << with_descendents(pid, depth:)
+                    .from_self(alias: :paths)
+                    .join_table(:inner, :resources, { :resources[:pid] => :paths[:id] })
+                    .join_table(:left_outer, filtered_properties(filters), { rid: :id }, table_alias: :properties)
+                    .select_all(:properties)
+                    .select_append(:fullpath)
+      else
+        # properties just of resource
+        scopes << resources
+                    .where(id: rid)
+                    .join_table(:inner, :paths_full, { :paths_full[:id] => resources[:pid] })
+                    .join_table(:left_outer, filtered_properties(filters), { rid: :id }, table_alias: :properties)
+                    .select_all(:properties)
+                    .select_append(:fullpath)
+      end
+
+      # union all the possible scopes together
+      scope = scopes.reduce { |memo, s| memo.union(s) }
+
+      # and then group by fullpath
+      scope.each_with_object({}) do |row, results|
+        results[row[:fullpath]] ||= []
+        next if row[:pid].nil? && row[:rid].nil? # nil object from left outer join
+
+        results[row[:fullpath]] << row
       end
     end
 
-    def set_property(pid: nil, rid: nil, user: true, prop:)
-      xmlns    = prop.namespace&.href || ""
-      xmlel    = prop.name
-      xmlattrs = JSON.dump prop.attributes.to_a
-      content  = Nokogiri::XML.fragment(prop.children).to_xml
-
-      connection[:properties]
-        .insert_conflict(:replace)
-        .insert(pid:, rid:, user:, xmlns:, xmlel:, xmlattrs:, content:)
-    end
-
-    def set_explicit_properties(pid: nil, rid: nil, user:, props: [])
+    # set a batch of properties on either a path or a resource (by id), given a collection of
+    # property definitions containing keys:
+    #
+    # * `xmlns:`    - defaults to `"DAV:"`
+    # * `xmlel:`    - required, no default
+    # * `xmlattrs:` - default to an empty hash
+    # * `content:`  - default to an empty string, parsed into an xml fragment
+    #
+    # @example
+    #   props = [
+    #     { xmlel: "foo" },
+    #        # equiv: <foo xmlns="DAV:"/>
+    #     { xmlel: "bar", content: "hello" },
+    #        # equiv: <bar xmlns="DAV:">hello</bar>
+    #     { xmlns: "urn:blah", xmlel: "baz", xmlattrs: { zip: "zap" }, content: "<kablam>pow</kablam>" }
+    #        # equiv: <baz xmlns="urn:blah" zip="zap"><kablam>pow</kablam></pow>
+    #        # note that kablam is implicitly in the same namespace as baz
+    #   ]
+    #
+    #   set_properties(pid:, user: true, props:)
+    #
+    # @param pid
+    def set_properties(pid: nil, rid: nil, user:, props:)
       props = props.map do |prop|
         [
           pid, rid, user,
@@ -133,12 +184,88 @@ module Repos
         .import(%i[pid rid user xmlns xmlel xmlattrs content], props)
     end
 
-    def clear_property(pid: nil, rid: nil, user: true, xmlns:, xmlel:)
-      connection[:properties]
-        .where(pid:, rid:, user:, xmlns:, xmlel:)
-        .delete
+    # set a batch of properties on either a path or a resource (by id), given xml nodes# (eg. from `<set>`)
+    # only one of `pid` or `rid` should be non-nil; the query will fail if both are present.
+    #
+    # any property already present by `(user,xmlns,xmlel)` will be overwritten.
+    #
+    # @param pid [UUID] the id of the path node to set the property on
+    # @param rid [Integer] the id of the resource to set the property on
+    # @param user [Bool] true if the property is being set on behalf of the user, false if it's system managed
+    # @param props [Array<Nokogiri::Element>] a child of `<prop>` element
+    # @see https://www.rfc-editor.org/rfc/rfc4918.html#section-14.18
+    def set_xml_properties(pid: nil, rid: nil, user:, props:)
+      props = props.map do |prop|
+        {
+          xmlns: prop.namespace&.href || "",
+          xmlel: prop.name,
+          xmlattrs: JSON.dump(prop.attributes.to_a),
+          content: Nokogiri::XML.fragment(prop.children).to_xml
+        }
+      end
+
+      set_properties(pid:, rid:, user:, props:)
     end
 
+    # clear a batch of properties on either a path or a resource (by id), given a collection of filters
+    #
+    # @param pid [UUID] the id of the path node to set the property on
+    # @param rid [Integer] the id of the resource to set the property on
+    # @param user [Bool] true if the property is set on behalf of the user, false if it's system managed
+    # @param filters [Array<Hash>] list of `{ xmlns:, xmlel: }` filters for removal
+    def remove_properties(pid: nil, rid: nil, user:, filters:)
+      props = props.map { _1.slice(:xmlns, :xmlel) }
+
+      query = connection[:properties].where(false)
+      query = props.reduce(query) do |scope, prop|
+        scope.or(pid:, rid:, user:, **prop)
+      end
+
+      query.delete
+    end
+
+    # clear a batch of properties on either a path or a resource (by id), given xml nodes (eg. from `<remove>`)
+    #
+    # @param pid [UUID] the id of the path node to set the property on
+    # @param rid [Integer] the id of the resource to set the property on
+    # @param user [Bool] true if the property is set on behalf of the user, false if it's system managed
+    # @param props [Array<Nokogiri::Element>] a child of `<prop>` element
+    # @see https://www.rfc-editor.org/rfc/rfc4918.html#section-14.18
+    def remove_xml_properties(pid: nil, rid: nil, user:, props:)
+      filters = props.map do |prop|
+        {
+          xmlns: prop.namespace&.href || "",
+          xmlel: prop.name
+        }
+      end
+
+      remove_properties(pid:, rid:, user:, filters:)
+    end
+
+    private
+
+    def paths      = connection[:paths]
+    def paths_full = connection[:paths_full]
+
+    def resources  = connection[:resources]
+    def properties = connection[:properties]
+
+    def clone_tree_sql
+      @clone_tree_sql ||= File.read File.join(__dir__, "./queries/clone_tree.sql")
+    end
+
+    # returns properties_all, filtered to the given set of property xmlns/xmlel
+    def filtered_properties(filters)
+      if filters
+        # reduce the filters over `or`, false is the identity there
+        initial = properties.where(false)
+        filters.reduce(initial) { |scope, filter| scope.or filter }
+      else
+        connection[:properties]
+      end
+    end
+
+    # recursive cte to collect fullpath information for descendants of the given pid
     def with_descendents(pid, depth:)
       connection[:descendents]
         .with_recursive(
@@ -156,62 +283,6 @@ module Repos
             .select_append(:paths_full[:pctype]),
           args: %i[id fullpath depth ctype pctype]
         )
-    end
-
-    def properties_at(pid: nil, rid: nil, depth:, filters: nil)
-      scopes = []
-
-      unless pid.nil?
-        # properties both of the path _and_ the resource _at_ that path
-        scopes << with_descendents(pid, depth:)
-                    .join_table(:left_outer, filtered_properties(filters), { pid: :id }, table_alias: :properties)
-                    .select_all(:properties)
-                    .select_append(:fullpath)
-
-        scopes << with_descendents(pid, depth:)
-                    .from_self(alias: :paths)
-                    .join_table(:inner, :resources, { :resources[:pid] => :paths[:id] })
-                    .join_table(:left_outer, filtered_properties(filters), { rid: :id }, table_alias: :properties)
-                    .select_all(:properties)
-                    .select_append(:fullpath)
-      end
-
-      unless rid.nil?
-        # properties just of resource
-        scopes << resources
-                    .where(id: rid)
-                    .join_table(:inner, :paths_full, { :paths_full[:id] => resources[:pid] })
-                    .join_table(:left_outer, filtered_properties(filters), { rid: :id }, table_alias: :properties)
-                    .select_all(:properties)
-                    .select_append(:fullpath)
-      end
-
-      scope = scopes.reduce { |memo, s| memo.union(s) }
-
-      scope.each_with_object({}) do |row, results|
-        results[row[:fullpath]] ||= []
-        next if row[:pid].nil? && row[:rid].nil? # nil object from left outer join
-
-        results[row[:fullpath]] << row
-      end
-    end
-
-    def blobify_data_content(data)
-      return data unless data.key? :content
-      return data if data[:content].nil?
-
-      data.merge(content: Sequel::SQL::Blob.new(data[:content]))
-    end
-
-    # returns properties_all, filtered to the given set of property xmlns/xmlel
-    def filtered_properties(filters)
-      if filters
-        # reduce the filters over `or`, false is the identity there
-        initial = properties.where(false)
-        filters.reduce(initial) { |scope, filter| scope.or filter }
-      else
-        connection[:properties]
-      end
     end
 
   end

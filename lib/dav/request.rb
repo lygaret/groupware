@@ -45,7 +45,7 @@ module Dav
     # header access per DAV spec
 
     # @return Integer, content length, 0 if the header is missing
-    # @raises MalformedRequetError if the length can't be parsed as an integer
+    # @raise MalformedRequetError if the length can't be parsed as an integer
     def dav_content_length
       @dav_content_length ||=
         begin
@@ -62,7 +62,7 @@ module Dav
     end
 
     # @return :infinity|Integer, the depth
-    # @raises MalformedRequestError if the given depth isn't in DAV_DEPTHS
+    # @raise MalformedRequestError if the given depth isn't in DAV_DEPTHS
     def dav_depth(default: "infinity")
       @dav_depth ||=
         begin
@@ -74,7 +74,7 @@ module Dav
     end
 
     # @return {Pathname} the destination path, scoped to this application, or nil if the header is empty
-    # @raises MalformedRequestError if the destination path is external
+    # @raise MalformedRequestError if the destination path is external
     def dav_destination
       @dav_destination ||=
         begin
