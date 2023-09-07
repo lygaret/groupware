@@ -1,0 +1,26 @@
+#!/usr/bin/env ruby
+
+require_relative "../config/system"
+System::Container.finalize!
+
+require "readline"
+
+# save term state, and restore on Ctrl-C
+stty_save = `stty -g`.chomp
+trap("INT") do
+  system("stty", stty_save)
+  exit
+end
+
+db = System::Container["db.connection"]
+db.synchronize do |conn|
+  while (buf = Readline.readline("> ", true))
+    begin
+      conn.execute2 buf do |row|
+        puts row.join "\t"
+      end
+    rescue StandardError => e
+      puts "error: #{e.message}"
+    end
+  end
+end
