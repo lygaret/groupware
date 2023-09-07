@@ -167,7 +167,7 @@ module Dav
           path = request.path.basename
 
           # the new path is the parent of the resource
-          id = paths.insert(pid:, path:, ctype: nil)
+          pid = paths.insert(pid:, path:, ctype: nil)
 
           display  = CGI.unescape(path)
           type     = request.dav_content_type
@@ -177,7 +177,7 @@ module Dav
           etag     = request.md5_body.hexdigest
 
           # insert the resource at that path
-          paths.put_resource(pid: id, display:, type:, lang:, length:, content:, etag:, creating: true)
+          paths.put_resource(pid:, display:, type:, lang:, length:, content:, etag:, creating: true)
         end
 
         complete 201
@@ -186,14 +186,15 @@ module Dav
       def put_update(path:)
         invalid "not found", status: 404 if path.nil?
 
-        display = CGI.unescape(path)
+        pid     = path[:id]
+        display = CGI.unescape(path[:path])
         type    = request.dav_content_type
         length  = request.dav_content_length
         lang    = request.get_header("content-language")
         content = request.md5_body.read(length)
         etag    = request.md5_body.hexdigest
 
-        paths.update_resource(pid: path[:id], display:, type:, lang:, length:, content:, etag:, creating: false)
+        paths.put_resource(pid:, display:, type:, lang:, length:, content:, etag:, creating: false)
         complete 204
       end
 

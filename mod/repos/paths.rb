@@ -53,7 +53,8 @@ module Repos
     # @param dpid [UUID] the id of the destination parent node
     # @param dpath [String] the new path under the parent node
     def clone_tree(id:, dpid:, dpath:)
-      connection[clone_tree_sql, id:, dpid:, dpath:].all
+      ds = connection[clone_tree_sql, id:, dpid:, dpath:]
+      connection.run ds.select_sql
     end
 
     # @param pid [UUID] the id of the path node to search
@@ -97,6 +98,7 @@ module Repos
 
       resources
         .returning(:id)
+        .insert_conflict(:replace)
         .insert(**values)
         .then { _1.first[:id] }
         .then { set_properties(rid: _1, user: false, props:) }
@@ -174,7 +176,7 @@ module Repos
           pid, rid, user,
           prop.fetch(:xmlns, "DAV:"),
           prop[:xmlel] || (raise ArgumentError, "missing xmlel column"),
-          prop.fetch(:xmlattrs, {}).then { JSON.dump _1.to_a },
+          prop.fetch(:xmlattrs, {}).then { JSON.dump(_1.to_a) },
           prop.fetch(:content, "").then { Nokogiri::XML.fragment(_1).to_xml }
         ]
       end
@@ -197,10 +199,10 @@ module Repos
     def set_xml_properties(pid: nil, rid: nil, user:, props:)
       props = props.map do |prop|
         {
-          xmlns: prop.namespace&.href || "",
-          xmlel: prop.name,
-          xmlattrs: JSON.dump(prop.attributes.to_a),
-          content: Nokogiri::XML.fragment(prop.children).to_xml
+          xmlns:    prop.namespace&.href || "",
+          xmlel:    prop.name,
+          xmlattrs: prop.attributes.to_a,
+          content:  prop.children.to_xml
         }
       end
 
@@ -214,11 +216,11 @@ module Repos
     # @param user [Bool] true if the property is set on behalf of the user, false if it's system managed
     # @param filters [Array<Hash>] list of `{ xmlns:, xmlel: }` filters for removal
     def remove_properties(pid: nil, rid: nil, user:, filters:)
-      props = props.map { _1.slice(:xmlns, :xmlel) }
+      filters = filters.map { _1.slice(:xmlns, :xmlel) }
 
       query = connection[:properties].where(false)
-      query = props.reduce(query) do |scope, prop|
-        scope.or(pid:, rid:, user:, **prop)
+      query = filters.reduce(query) do |scope, filter|
+        scope.or(pid:, rid:, user:, **filter)
       end
 
       query.delete
