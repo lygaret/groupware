@@ -5,6 +5,7 @@ require_relative "../config/system"
 System::Container.finalize!
 
 require "readline"
+require "amazing_print"
 
 # save term state, and restore on Ctrl-C
 stty_save = `stty -g`.chomp
@@ -18,7 +19,7 @@ db.synchronize do |conn|
   while (buf = Readline.readline("> ", true))
     begin
       conn.execute2 buf do |row|
-        puts row.join "\t"
+        ap row, index: false, multiline: false, object_id: false
       end
     rescue StandardError => e
       puts "error: #{e.message}"

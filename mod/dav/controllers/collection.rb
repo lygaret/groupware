@@ -44,7 +44,7 @@ module Dav
             headers  = {
               "Content-Type" => resource[:type],
               "Content-Length" => resource[:length].to_s,
-              "Last-Modified" => resource[:updated_at] || resource[:created_at],
+              "Last-Modified" => Time.at(resource[:updated_at] || resource[:created_at]).rfc2822,
               "ETag" => resource[:etag]
             }
             headers.reject! { _2.nil? }

@@ -58,7 +58,7 @@ insert into resources
     res.length,
     res.content,
     res.etag,
-    datetime('now'),
+    unixepoch(),
     null
   from temp.resource_clones targets
   join resources res on res.id = targets.id;

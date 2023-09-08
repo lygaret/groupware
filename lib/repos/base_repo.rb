@@ -10,8 +10,8 @@ module Repos
       # sequel function for uuid()
       def self.uuid = Sequel.function(:uuid)
 
-      # sequel function for datetime('now')
-      def self.now  = Sequel.function(:datetime, "now")
+      # sequel function for current timestamp
+      def self.now  = Sequel.function(:unixepoch)
 
       # sequel function: coalesce(...)
       def self.coalesce(...) = Sequel.function(:coalesce, ...)

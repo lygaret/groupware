@@ -13,8 +13,8 @@ Sequel.migration do
         , content    BLOB
         , etag       TEXT
 
-        , created_at TEXT
-        , updated_at TEXT
+        , created_at INTEGER
+        , updated_at INTEGER
       );
 
       CREATE        INDEX resources_id_idx ON resources(id);
