@@ -67,9 +67,11 @@ module Dav
       begin
         controller.with_env(env).send(methname, path:, ppath:)
       rescue Request::MalformedRequestError => e
-        respond methname, e.message, status: 400
+        body = methname == :head ? "" : e.message
+        respond methname, body, status: 400
       rescue HaltRequest => e
-        respond methname, e.message, status: e.status
+        body = methname == :head ? "" : e.message
+        respond methname, body, status: e.status
       end
     end
 

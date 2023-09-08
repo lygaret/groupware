@@ -8,18 +8,22 @@ require_relative "../config/system"
 System::Container.finalize!
 
 require "dav/middleware/dav_header"
+require "dav/middleware/http_logger"
+require "dav/middleware/request_id"
 
 logger   = System::Container["logger"]
 settings = System::Container["settings"]
 env      = System::Container.env
 
 app = Rack::Builder.new do
-  if env.development?
-    use Rack::Lint
-    use Rack::ShowExceptions
-  end
+  use Rack::Lint if env.development?
 
   use Rack::TempfileReaper
+  use Dav::Middleware::RequestId
+
+  logger = logger.child(system: :request)
+  use Dav::Middleware::HttpLogger, logger:, level: "info"
+
   use Rack::ContentLength
   use Rack::Deflater
 
