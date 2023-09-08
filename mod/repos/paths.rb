@@ -199,10 +199,10 @@ module Repos
     def set_xml_properties(pid: nil, rid: nil, user:, props:)
       props = props.map do |prop|
         {
-          xmlns:    prop.namespace&.href || "",
-          xmlel:    prop.name,
+          xmlns: prop.namespace&.href || "",
+          xmlel: prop.name,
           xmlattrs: prop.attributes.to_a,
-          content:  prop.children.to_xml
+          content: prop.children.to_xml
         }
       end
 

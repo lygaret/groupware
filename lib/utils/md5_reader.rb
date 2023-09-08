@@ -12,14 +12,19 @@ module Utils
       @hash  = Digest::MD5.new
     end
 
+    # @return [String] the computed digest of data read so far
     def hexdigest = @hash.hexdigest
 
-    # reader methods as expected by rack body readers
-
+    # close the underlying input stream
     def close     = @input.close
+
+    # gets from the underlying input stream
     def gets(...) = @input.gets(...).tap { @hash << _1 }
+
+    # read from the underlying input stream
     def read(...) = @input.read(...).tap { @hash << _1 }
 
+    # each from the underlying input stream
     def each
       @input.each do |out|
         @hash << out

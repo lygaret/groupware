@@ -5,6 +5,8 @@ module Dav
     # Rack middleware to insert the DAV header into responses
     class DavHeader
 
+      # @param app the rack application to wrap
+      # @param support [String]
       def initialize(app, support:)
         @app     = app
         @support = support

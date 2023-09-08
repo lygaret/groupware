@@ -3,9 +3,10 @@
 require "ougai"
 
 module System
-  module Providers # :nodoc: all
+  module Providers
     module Logger
-      class CustomFormat < Ougai::Formatters::Readable
+      # minorly customized format for log messages in development
+      class DevFormat < Ougai::Formatters::Readable
 
         def call(severity, time, _progname, data)
           @excluded_fields.each { |f| data.delete(f) }
@@ -37,7 +38,7 @@ System::Container.register_provider(:logger) do
     level        = target[:settings].log_level.to_s.upcase
     logger.level = logger.from_label level
 
-    logger.formatter = System::Providers::Logger::CustomFormat.new if target.env.development?
+    logger.formatter = System::Providers::Logger::DevFormat.new if target.env.development?
 
     register "logger", logger
   end

@@ -11,23 +11,26 @@ module Dav
   # path, Destination header, If header handling, etc.
   class Request < Rack::Request
 
-    class MalformedRequestError < StandardError; end
-
     DAV_DEPTHS = %w[infinity 0 1].freeze
 
+    # thrown when a request is malformed, either in body or headers
+    class MalformedRequestError < StandardError; end
+
+    # @return [Pathname] the pathname recovered from the rack environment
     def path = env["dav.pathname"]
 
-    # a body wrapper which computes the md5 as it's being read.
+    # @return [Utils::MD5Reader] a body wrapper which computes the md5 as it's being read.
     def md5_body
       @md5_body ||= Utils::MD5Reader.new(body)
     end
 
-    # typed body readers
-
+    # @return [Boolean] is the content-type xml?
     def xml_body?(allow_nil: false)
       (allow_nil && content_type.nil?) || content_type =~ %r{(text|application)/xml}
     end
 
+    # @return [Nokogiri::XML::Document] the body parsed as xml
+    # @raise MalformedRequestError if the body cannot be parsed
     def xml_body
       @xml_body ||=
         begin
@@ -41,8 +44,6 @@ module Dav
           raise MalformedRequestError, e
         end
     end
-
-    # header access per DAV spec
 
     # @return Integer, content length, 0 if the header is missing
     # @raise MalformedRequetError if the length can't be parsed as an integer
