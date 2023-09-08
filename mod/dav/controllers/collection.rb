@@ -14,7 +14,8 @@ module Dav
         "logger"
       ]
 
-      DAV_NSDECL = { d: "DAV:" }.freeze
+      DAV_NSDECL     = { d: "DAV:" }.freeze
+      DAV_LOCKSCOPES = %w[exclusive shared].freeze
 
       OPTIONS_SUPPORTED_METHODS = %w[
         OPTIONS HEAD GET PUT DELETE
@@ -176,6 +177,70 @@ module Dav
         end
 
         complete 201
+      end
+
+      def lock(path:, ppath:)
+        invalid! "expecting <lockinfo> xml body", status: 400 unless request.xml_body?
+
+        lockinfo = request.xml_body.css("> d|lockinfo:only-child", DAV_NSDECL)
+        scope    = lockinfo.at_css("> d|lockscope", DAV_NSDECL).element_children.first
+        type     = lockinfo.at_css("> d|locktype", DAV_NSDECL).element_children.first
+        owner    = lockinfo.at_css("> d|owner", DAV_NSDECL)&.children&.to_xml
+
+        invalid! "lockscope must be present" if scope.nil?
+        invalid! "lockscope must be in the DAV: namespace" if scope.namespace&.href != "DAV:"
+        invalid! "lockscope must be exclusive/shared" unless DAV_LOCKSCOPES.include? scope.name
+        invalid! "locktype only supports DAV:write" unless type in { name: "write", namespace: { href: "DAV:" } }
+
+        lid = paths.transaction do
+          pid =
+            if path.nil?
+              # lock puts an empty resource to unknown paths, preemptively locked
+              invalid! "intermediate paths must exist!", status: 409 if ppath.nil?
+              paths.insert(pid: ppath[:id], path: request.path.basename)
+            else
+              path[:id]
+            end
+
+          paths
+            .send(:locks)
+            .returning(:id)
+            .insert(
+              id: Sequel.function(:uuid),
+              pid: pid,
+              deep: request.dav_depth == :infinity,
+              type: type.name,
+              scope: scope.name,
+              owner: owner,
+              timeout: request.dav_timeout,
+              refreshed_at: Time.now.to_i,
+              created_at: Time.now.to_i
+            )
+            .then { _1.first[:id] }
+        end
+
+        lock = paths.send(:locks_live).where(id: lid).first
+        builder = Nokogiri::XML::Builder.new do |xml|
+          xml["d"].prop("xmlns:d" => "DAV:") do
+            xml["d"].lockdiscovery do
+              xml["d"].activelock do
+                xml["d"].locktype { xml["d"].send(lock[:type]) }
+                xml["d"].lockscope { xml["d"].send(lock[:scope]) }
+                xml["d"].depth (lock[:deep] ? "infinity" : 0)
+                xml["d"].owner Nokogiri::XML.fragment(lock[:owner]).to_xml
+                xml["d"].timeout(lock[:remaining].then { "Second-#{_1}" })
+                xml["d"].locktoken { xml["d"].href "urn:uuid:#{lid}" }
+                xml["d"].lockroot { xml["d"].href request.path_info }
+              end
+            end
+          end
+        end
+
+        response.headers.merge! "lock-token" => "urn:uuid:#{lid}"
+        response.headers.merge! "content-type" => "application/xml"
+        response.body = [builder.to_xml]
+
+        complete 200
       end
 
       private

@@ -278,19 +278,29 @@ module Repos
           connection[:paths_full]
             .join_table(:left_outer, :locks_live, { :locks[:pid] => :paths_full[:id] }, table_alias: :locks)
             .where(:paths_full[:id] => pid)
-            .select(:paths_full[:id], :fullpath, 0, :ctype, :pctype, :locks[:id], :locks[:depth]),
+            .select(
+              :paths_full[:id],
+              :paths_full[:fullpath],
+              0,
+              :paths_full[:ctype],
+              :paths_full[:pctype],
+              :locks[:id],
+              :locks[:deep]
+            ),
           connection[:paths_full]
             .join(:descendents, :paths_full[:pid] => :descendents[:id])
             .join_table(:left_outer, :locks_live, { :locks[:pid] => :paths_full[:id] }, table_alias: :locks)
             .where { :descendents[:depth] < depth }
-            .select(:paths_full[:id])
-            .select_append(:paths_full[:fullpath])
-            .select_append(:descendents[:depth] + 1)
-            .select_append(:paths_full[:ctype])
-            .select_append(:paths_full[:pctype])
-            .select_append(SQL.coalesce(:locks[:id], :descendents[:lockid]))
-            .select_append(Sequel.case({ :locks[:id] => :locks[:depth] }, :descendents[:lockdepth] - 1)),
-          args: %i[id fullpath depth ctype pctype lockid lockdepth]
+            .select(
+              :paths_full[:id],
+              :paths_full[:fullpath],
+              :descendents[:depth] + 1,
+              :paths_full[:ctype],
+              :paths_full[:pctype],
+              Sequel.case({{:locks[:id] => nil, :descendents[:lockdeep] => 1} => :descendents[:lockid]}, :locks[:id]),
+              :locks[:deep]
+            ),
+          args: %i[id fullpath depth ctype pctype lockid lockdeep]
         )
     end
 

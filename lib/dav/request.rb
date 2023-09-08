@@ -11,7 +11,8 @@ module Dav
   # path, Destination header, If header handling, etc.
   class Request < Rack::Request
 
-    DAV_DEPTHS = %w[infinity 0 1].freeze
+    DAV_DEPTHS      = %w[infinity 0 1].freeze
+    DAV_MAX_TIMEOUT = 30 * 24 * 60 * 60 * 60 # 30 days
 
     # thrown when a request is malformed, either in body or headers
     class MalformedRequestError < StandardError; end
@@ -95,6 +96,24 @@ module Dav
     def dav_overwrite?
       overwrite = get_header("HTTP_OVERWRITE")
       overwrite&.downcase&.send(:==, "t")
+    end
+
+    # @return Integer requested timeouts, up to the given max
+    def dav_timeout(max: DAV_MAX_TIMEOUT)
+      timeout = get_header("HTTP_TIMEOUT")
+      if timeout.nil? || timeout == ""
+        nil
+      else
+        timeout.split(",").map do |ts|
+          if ts == "Infinite"
+            max
+          elsif (match = /Second-(\d+)/.match(ts))
+            [match[1].to_i, max].min
+          else
+            raise MalformedRequestError, "bad timeout format!" unless match
+          end
+        end
+      end.min
     end
 
   end
