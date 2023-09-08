@@ -22,15 +22,22 @@ module Dav
         PROPFIND PROPPATCH
       ].join(",").freeze
 
+      # OPTIONS http method
+      # - respond with allowed methods
+      # - TODO: cors? what else?
       def options(*)
         response["Allow"] = OPTIONS_SUPPORTED_METHODS
         complete 204
       end
 
+      # HEAD http method
+      # returns the headers for a resource at a given path, but includes no body
       def head(path:, ppath:)
         get(path:, ppath:, include_body: false)
       end
 
+      # GET http method
+      # returns the resource at a given path
       def get(path:, ppath:, include_body: true)
         invalid! "not found", status: 404 if path.nil?
 
@@ -57,6 +64,8 @@ module Dav
         end
       end
 
+      # MKCOL http (webdav) method
+      # creates a collection at the given path
       def mkcol(path:, ppath:)
         invalid! "mkcol w/ body is unsupported", status: 415 if request.media_type
         invalid! "mkcol w/ body is unsupported", status: 415 if request.content_length
@@ -82,6 +91,8 @@ module Dav
         complete 201 # created
       end
 
+      # PUT http method
+      # upserts a resource to the given path
       def put(path:, ppath:)
         if path.nil?
           put_insert(ppath:)
@@ -90,6 +101,8 @@ module Dav
         end
       end
 
+      # DELETE http method
+      # recursively deletes a path and it's children
       def delete(path:, ppath:)
         invalid! "not found", status: 404 if path.nil?
 
@@ -97,9 +110,16 @@ module Dav
         complete 204 # no content
       end
 
+      # COPY http (webdav) method
+      # clones the subtree at the given path to a different parent
       def copy(path:, ppath:) = copy_move path:, ppath:, move: false
+
+      # MOVE http (webdav) method
+      # moves the subtree at the given path to a different parent
       def move(path:, ppath:) = copy_move path:, ppath:, move: true
 
+      # PROPFIND http (webdav) method
+      # returns properties set on the given resource, possibly recursively
       def propfind(path:, ppath:)
         invalid! "not found", status: 404 if path.nil?
         invalid! "expected xml body", status: 415 unless request.xml_body?(allow_nil: true)
@@ -128,6 +148,8 @@ module Dav
         invalid! "expected at least one of <allprop>,<propname>,<prop>", status: 400
       end
 
+      # PROPPATCH http (webdav) method
+      # set/remove properties on the given resource, in document order
       def proppatch(path:, ppath:)
         invalid! "not found", status: 404 if path.nil?
         invalid! "expected xml body", status: 415 unless request.xml_body?(allow_nil: true)
@@ -158,6 +180,7 @@ module Dav
 
       private
 
+      # insert a resource at the parent path
       def put_insert(ppath:)
         invalid! "intermediate path not found", status: 409 if ppath.nil?
         invalid! "parent must be a collection", status: 409 if ppath[:ctype].nil?
@@ -183,6 +206,7 @@ module Dav
         complete 201
       end
 
+      # update a resource at the given path
       def put_update(path:)
         invalid "not found", status: 404 if path.nil?
 
@@ -198,6 +222,37 @@ module Dav
         complete 204
       end
 
+      # copy or move a tree from one path to another
+      def copy_move(path:, ppath:, move:)
+        invalid! "not found", status: 404 if path.nil?
+
+        paths.transaction do
+          dest  = request.dav_destination
+          pdest = paths.at_path(dest.dirname)
+
+          invalid! "destination root must exist", status: 409           if pdest.nil?
+          invalid! "destination root must be a collection", status: 409 if pdest[:ctype].nil?
+
+          extant = paths.at_path(dest.to_s)
+          unless extant.nil?
+            invalid! "destination must not already exist", status: 412 unless request.dav_overwrite?
+
+            paths.delete(id: extant[:id])
+          end
+
+          if move
+            paths.move_tree(id: path[:id], dpid: pdest[:id], dpath: dest.basename)
+          else
+            paths.clone_tree(id: path[:id], dpid: pdest[:id], dpath: dest.basename)
+          end
+
+          status = extant.nil? ? 201 : 204
+          complete status
+        end
+      end
+
+      # return all* properties from the given path
+      # if shallow, only return the names
       def propfind_allprop(path:, depth:, shallow:)
         properties = paths.properties_at(pid: path[:id], depth:)
         builder    = Nokogiri::XML::Builder.new do |xml|
@@ -225,6 +280,7 @@ module Dav
         response.finish
       end
 
+      # return the specific properties on the given path
       def propfind_prop(path:, depth:, prop:)
         # because we have to report on properties we couldn't find,
         # we need to maintain a set of properties we've matched, vs those expected
@@ -283,6 +339,7 @@ module Dav
         response.finish
       end
 
+      # given an xml builder, render a <DAV:propstat> block
       def render_propstat(xml:, status:, props:, &block)
         xml["d"].propstat do
           xml["d"].status "HTTP/1.1 #{status}"
@@ -292,6 +349,7 @@ module Dav
         end
       end
 
+      # given an xml builder, render a <DAV:prop> block and it's fragment children
       def render_row(xml:, row:, shallow:)
         attrs   = Hash.new(JSON.parse(row[:xmlattrs]))
         content =
@@ -308,34 +366,6 @@ module Dav
         else
           attrs.merge! xmlns: row[:xmlns]
           xml.send(row[:xmlel], **attrs, &content)
-        end
-      end
-
-      def copy_move(path:, ppath:, move:)
-        invalid! "not found", status: 404 if path.nil?
-
-        paths.transaction do
-          dest  = request.dav_destination
-          pdest = paths.at_path(dest.dirname)
-
-          invalid! "destination root must exist", status: 409           if pdest.nil?
-          invalid! "destination root must be a collection", status: 409 if pdest[:ctype].nil?
-
-          extant = paths.at_path(dest.to_s)
-          unless extant.nil?
-            invalid! "destination must not already exist", status: 412 unless request.dav_overwrite?
-
-            paths.delete(id: extant[:id])
-          end
-
-          if move
-            paths.move_tree(id: path[:id], dpid: pdest[:id], dpath: dest.basename)
-          else
-            paths.clone_tree(id: path[:id], dpid: pdest[:id], dpath: dest.basename)
-          end
-
-          status = extant.nil? ? 201 : 204
-          complete status
         end
       end
 
