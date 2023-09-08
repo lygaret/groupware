@@ -252,6 +252,9 @@ module Repos
     def resources  = connection[:resources]
     def properties = connection[:properties]
 
+    def locks      = connection[:locks]
+    def locks_live = connection[:locks_live]
+
     def clone_tree_sql
       @clone_tree_sql ||= File.read File.join(__dir__, "./queries/clone_tree.sql")
     end
@@ -267,23 +270,27 @@ module Repos
       end
     end
 
-    # recursive cte to collect fullpath information for descendants of the given pid
+    # recursive cte to collect fullpath information for descendents of the given pid
     def with_descendents(pid, depth:)
       connection[:descendents]
         .with_recursive(
           :descendents,
           connection[:paths_full]
-            .where(id: pid)
-            .select(:id, :fullpath, Sequel[0].as(:depth), :ctype, :pctype),
+            .join_table(:left_outer, :locks_live, { :locks[:pid] => :paths_full[:id] }, table_alias: :locks)
+            .where(:paths_full[:id] => pid)
+            .select(:paths_full[:id], :fullpath, 0, :ctype, :pctype, :locks[:id], :locks[:depth]),
           connection[:paths_full]
-            .join(:descendents, id: :pid)
+            .join(:descendents, :paths_full[:pid] => :descendents[:id])
+            .join_table(:left_outer, :locks_live, { :locks[:pid] => :paths_full[:id] }, table_alias: :locks)
             .where { :descendents[:depth] < depth }
             .select(:paths_full[:id])
             .select_append(:paths_full[:fullpath])
             .select_append(:descendents[:depth] + 1)
             .select_append(:paths_full[:ctype])
-            .select_append(:paths_full[:pctype]),
-          args: %i[id fullpath depth ctype pctype]
+            .select_append(:paths_full[:pctype])
+            .select_append(SQL.coalesce(:locks[:id], :descendents[:lockid]))
+            .select_append(Sequel.case({ :locks[:id] => :locks[:depth] }, :descendents[:lockdepth] - 1)),
+          args: %i[id fullpath depth ctype pctype lockid lockdepth]
         )
     end
 
