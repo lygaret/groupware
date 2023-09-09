@@ -14,8 +14,15 @@ module Repos
     # @param fullpath [String] the full path to find (eg. "/some/full/path")
     # @return [Hash] the path row at the given full path
     def at_path(fullpath)
-      filtered_paths = paths_full.where(fullpath:)
-      paths.join(filtered_paths, id: :id).first
+      filtered_paths = connection[:paths_extra].where(fullpath:)
+      paths
+        .join(filtered_paths, { id: :id }, table_alias: :extra)
+        .select_append(:extra[:fullpath])
+        .select_append(:extra[:pctype])
+        .select_append(:extra[:lockid])
+        .select_append(:extra[:plockid])
+        .select_append(:extra[:lockdeep])
+        .first
     end
 
     # insert a new path node
@@ -130,7 +137,7 @@ module Repos
         # properties just of resource
         scopes << resources
                     .where(id: rid)
-                    .join_table(:inner, :paths_full, { :paths_full[:id] => resources[:pid] })
+                    .join_table(:inner, :paths_extra, { :paths_extra[:id] => :resources[:pid] })
                     .join_table(:left_outer, filtered_properties(filters), { rid: :id }, table_alias: :properties)
                     .select_all(:properties)
                     .select_append(:fullpath)
@@ -247,7 +254,6 @@ module Repos
     private
 
     def paths      = connection[:paths]
-    def paths_full = connection[:paths_full]
 
     def resources  = connection[:resources]
     def properties = connection[:properties]
@@ -272,35 +278,18 @@ module Repos
 
     # recursive cte to collect fullpath information for descendents of the given pid
     def with_descendents(pid, depth:)
+      base_depth = connection[:paths_extra].where(id: pid).get(:depth)
       connection[:descendents]
         .with_recursive(
           :descendents,
-          connection[:paths_full]
-            .join_table(:left_outer, :locks_live, { :locks[:pid] => :paths_full[:id] }, table_alias: :locks)
-            .where(:paths_full[:id] => pid)
-            .select(
-              :paths_full[:id],
-              :paths_full[:fullpath],
-              0,
-              :paths_full[:ctype],
-              :paths_full[:pctype],
-              :locks[:id],
-              :locks[:deep]
-            ),
-          connection[:paths_full]
-            .join(:descendents, :paths_full[:pid] => :descendents[:id])
-            .join_table(:left_outer, :locks_live, { :locks[:pid] => :paths_full[:id] }, table_alias: :locks)
-            .where { :descendents[:depth] < depth }
-            .select(
-              :paths_full[:id],
-              :paths_full[:fullpath],
-              :descendents[:depth] + 1,
-              :paths_full[:ctype],
-              :paths_full[:pctype],
-              Sequel.case({{:locks[:id] => nil, :descendents[:lockdeep] => 1} => :descendents[:lockid]}, :locks[:id]),
-              :locks[:deep]
-            ),
-          args: %i[id fullpath depth ctype pctype lockid lockdeep]
+          connection[:paths_extra]
+            .where(id: pid)
+            .select_all(:paths_extra),
+          connection[:paths_extra]
+            .join(:descendents, :paths_extra[:pid] => :descendents[:id])
+            .where { :descendents[:depth] < (base_depth + depth) }
+            .select_all(:paths_extra),
+          args: %i[id pid path fullpath depth ctype pctype lockid plockid lockdeep]
         )
     end
 
