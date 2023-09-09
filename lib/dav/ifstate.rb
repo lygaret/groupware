@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "parslet"
 
 require "dav/errors"
@@ -21,46 +23,54 @@ module Dav
   IfStateEtagPredicate  = Data.define(:inv, :etag)
 
   class IfStateParser < Parslet::Parser
-    rule(:sp)  { str(' ').repeat(1) }
-    rule(:sp?) { str(' ').repeat(0) }
+
+    rule(:sp)  { str(" ").repeat(1) }
+    rule(:sp?) { str(" ").repeat(0) }
 
     rule(:string) do
-      str('"') >> (str('\\') >> any | str('"').absent? >> any).repeat.as(:string) >> str('"')
+      str('"') >> ((str("\\") >> any) | (str('"').absent? >> any)).repeat.as(:string) >> str('"')
     end
 
     rule(:resource_tag) do
-      str('<') >> match("[^>]").repeat.as(:rtag) >> str('>')
+      str("<") >> match("[^>]").repeat.as(:rtag) >> str(">")
     end
 
     rule(:state_token) do
-      str('<') >> match("[^>]").repeat.as(:token) >> str('>')
+      str("<") >> match("[^>]").repeat.as(:token) >> str(">")
     end
 
     rule(:entity_tag) do
-      str('[') >> (string | match("[^\\\]]")).repeat.as(:etag) >> str(']')
+      str("[") >> (string | match("[^\\]]")).repeat.as(:etag) >> str("]")
     end
 
     rule(:condition) do
-      str('Not').maybe.as(:not) >> sp? >> (state_token | entity_tag)
+      str("Not").maybe.as(:not) >> sp? >> (state_token | entity_tag)
     end
 
     rule(:untagged_list) do
-      str('(') >> (condition >> sp?).repeat.as(:conditions) >> str(')')
+      str("(") >> (condition >> sp?).repeat.as(:conditions) >> str(")")
     end
 
     rule(:tagged_list) do
       resource_tag >> sp? >> untagged_list
     end
 
-    rule(:header) { (tagged_list >> sp? | untagged_list >> sp?).repeat }
+    rule(:header) { ((tagged_list >> sp?) | (untagged_list >> sp?)).repeat }
     root(:header)
+
   end
 
   class IfStateTransform < Parslet::Transform
-    rule(not: simple(:inv), token: simple(:token))        { IfStateTokenPredicate.new(!inv.nil?, token) }
-    rule(not: simple(:inv), etag: simple(:etag))          { IfStateEtagPredicate.new(!inv.nil?, etag) }
 
+    rule(not: simple(:inv), token: simple(:token)) { IfStateTokenPredicate.new(!inv.nil?, token) }
+    rule(not: simple(:inv), etag: simple(:etag))   { IfStateEtagPredicate.new(!inv.nil?, etag) }
+
+    # without rtag, it resolves to the current request uri
+    rule(conditions: subtree(:preds)) { IfStateClause.new(nil, preds) }
+
+    # otherwise, we've extracted the rtag, and it's the url to check against
     rule(rtag: simple(:uri), conditions: subtree(:preds)) { IfStateClause.new(uri, preds) }
-    rule(conditions: subtree(:preds))                     { IfStateClause.new(nil, preds) }
+
   end
+
 end

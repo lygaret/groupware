@@ -18,11 +18,13 @@ module Dav
   end
 
   # thrown when a request is malformed, either in body or headers
-  class MalformedRequestError < HaltRequest;
+  class MalformedRequestError < HaltRequest
+
     def initialize(...)
       super
       @status = 400
     end
+
   end
 
 end
