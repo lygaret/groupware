@@ -34,7 +34,7 @@ module Dav
       # @param status [Integer] the http status code
       # @raise HaltRequest
       def invalid!(reason = nil, status: 400)
-        raise HaltRequest.new(status:), reason
+        raise Errors::HaltRequest.new(status:), reason
       end
 
     end

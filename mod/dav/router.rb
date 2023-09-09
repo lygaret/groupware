@@ -25,6 +25,8 @@ module Dav
       methname = env[Rack::REQUEST_METHOD].downcase.to_sym
       pathname = env["dav.pathname"] = Dav::Pathname.parse pathinfo
 
+      # what I would give for pervasive monad syntax and Maybe...
+
       if pathname.to_s == ""
         # quick bypass for the root
         controller = root_controller
@@ -54,7 +56,7 @@ module Dav
           end
         end
       end
-    rescue HaltRequest => e
+    rescue Errors::HaltRequest => e
       body = methname == :head ? "" : e.message
       respond methname, body, status: e.status
     end

@@ -45,7 +45,7 @@ module Dav
             Nokogiri::XML.parse(content) { |config| config.strict.pedantic.nsclean }
           end
         rescue StandardError
-          raise MalformedRequestError.new(status: 400), "couldn't parse xml body!"
+          raise errors::MalformedRequestError.new(status: 400), "couldn't parse xml body!"
         end
     end
 
@@ -56,7 +56,7 @@ module Dav
         begin
           content_length.nil? ? 0 : Integer(content_length)
         rescue ArgumentError
-          raise MalformedRequestError, "content length is not an integer!"
+          raise Errors::MalformedRequestError, "content length is not an integer!"
         end
     end
 
@@ -72,7 +72,7 @@ module Dav
       @dav_depth ||=
         begin
           depth = get_header("HTTP_DEPTH")&.downcase || default
-          raise MalformedRequestError, "depth is malformed: #{depth}" unless DAV_DEPTHS.include? depth
+          raise Errors::MalformedRequestError, "depth is malformed: #{depth}" unless DAV_DEPTHS.include? depth
 
           depth == "infinity" ? :infinity : depth.to_i
         end
@@ -85,9 +85,9 @@ module Dav
         begin
           dest = get_header("HTTP_DESTINATION")
           unless dest.nil?
-            raise MalformedRequestError, "destination is external!" unless dest.delete_prefix!(base_url)
+            raise Errors::MalformedRequestError, "destination is external!" unless dest.delete_prefix!(base_url)
             unless dest.delete_prefix!(script_name) || script_name == ""
-              raise MalformedRequestError, "destination is external!"
+              raise Errors::MalformedRequestError, "destination is external!"
             end
           end
 
@@ -113,7 +113,7 @@ module Dav
           elsif (match = /Second-(\d+)/.match(ts))
             [match[1].to_i, max].min
           else
-            raise MalformedRequestError, "bad timeout format!" unless match
+            raise Errors::MalformedRequestError, "bad timeout format!" unless match
           end
         end
       end.min

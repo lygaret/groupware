@@ -238,6 +238,7 @@ module Dav
       # update a resource at the given path
       def put_update(path:)
         invalid "not found", status: 404 if path.nil?
+
         validate_lock!(path:)
 
         pid     = path[:id]

@@ -21,7 +21,7 @@ module Dav
       res  = Transform.new.apply(tree)
       new(res)
     rescue Parslet::ParseFailed
-      raise MalformedRequestError, "couldnt parse If: header"
+      raise Errors::MalformedRequestError, "couldnt parse If: header"
     end
 
     attr_reader :clauses
