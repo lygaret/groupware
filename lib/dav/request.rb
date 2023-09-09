@@ -2,6 +2,9 @@
 
 require "rack"
 require "rack/mime"
+
+require "dav/errors"
+require "dav/ifstate"
 require "dav/pathname"
 require "utils/md5_reader"
 
@@ -14,11 +17,11 @@ module Dav
     DAV_DEPTHS      = %w[infinity 0 1].freeze
     DAV_MAX_TIMEOUT = 30 * 24 * 60 * 60 * 60 # 30 days
 
-    # thrown when a request is malformed, either in body or headers
-    class MalformedRequestError < StandardError; end
-
     # @return [Pathname] the pathname recovered from the rack environment
     def path = env["dav.pathname"]
+
+    # @return [String] fullpath as a string
+    def fullpath = super.to_s
 
     # @return [Utils::MD5Reader] a body wrapper which computes the md5 as it's being read.
     def md5_body
@@ -114,6 +117,10 @@ module Dav
           end
         end
       end.min
+    end
+
+    def dav_ifstate
+      @dav_ifstate ||= IfState.parse get_header("HTTP_IF")
     end
 
   end

@@ -54,6 +54,9 @@ module Dav
           end
         end
       end
+    rescue HaltRequest => e
+      body = methname == :head ? "" : e.message
+      respond methname, body, status: e.status
     end
 
     private
@@ -62,16 +65,10 @@ module Dav
     def root_controller          = System::Container["dav.controllers.collection"]
 
     def call_forward(controller, methname, path:, ppath:, env:)
-      return respond(methname, "method not supported", status: 405) unless controller.respond_to? methname
-
-      begin
+      if controller.respond_to? methname
         controller.with_env(env).send(methname, path:, ppath:)
-      rescue Request::MalformedRequestError => e
-        body = methname == :head ? "" : e.message
-        respond methname, body, status: 400
-      rescue HaltRequest => e
-        body = methname == :head ? "" : e.message
-        respond methname, body, status: e.status
+      else
+        respond(methname, "method not supported", status: 405)
       end
     end
 

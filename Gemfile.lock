@@ -85,6 +85,7 @@ GEM
     parser (3.2.2.3)
       ast (~> 2.4.1)
       racc
+    parslet (2.0.0)
     psych (5.1.0)
       stringio
     racc (1.7.1)
@@ -167,6 +168,7 @@ DEPENDENCIES
   dry-types (~> 1.0)
   nokogiri (~> 1.15)
   ougai (~> 2.0)
+  parslet (~> 2.0)
   rack (~> 3.0)!
   rackup (~> 2)
   rake (~> 13.0)
