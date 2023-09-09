@@ -80,6 +80,9 @@ module Dav
         has_inter ||= request.path.dirname == ""
         invalid! "intermediate paths must exist", status: 409 unless has_inter
 
+        # root cant' be locked
+        validate_lock!(path: ppath) unless ppath.nil?
+
         paths.transaction do
           pid   = ppath&.[](:id)
           path  = request.path.basename
@@ -106,6 +109,7 @@ module Dav
       # recursively deletes a path and it's children
       def delete(path:, ppath:)
         invalid! "not found", status: 404 if path.nil?
+        validate_lock!(path:)
 
         paths.delete(id: path[:id])
         complete 204 # no content
@@ -113,11 +117,15 @@ module Dav
 
       # COPY http (webdav) method
       # clones the subtree at the given path to a different parent
-      def copy(path:, ppath:) = copy_move path:, ppath:, move: false
+      def copy(path:, ppath:)
+        copy_move path:, ppath:, move: false
+      end
 
       # MOVE http (webdav) method
       # moves the subtree at the given path to a different parent
-      def move(path:, ppath:) = copy_move path:, ppath:, move: true
+      def move(path:, ppath:)
+        copy_move path:, ppath:, move: true
+      end
 
       # PROPFIND http (webdav) method
       # returns properties set on the given resource, possibly recursively
@@ -155,6 +163,8 @@ module Dav
         invalid! "not found", status: 404 if path.nil?
         invalid! "expected xml body", status: 415 unless request.xml_body?(allow_nil: true)
 
+        validate_lock!(path:)
+
         doc       = request.xml_body
         update_el = doc.at_css("d|propertyupdate:only-child", DAV_NSDECL)
         invalid! "expected propertyupdate in xml root", status: 415 if update_el.nil?
@@ -180,67 +190,19 @@ module Dav
       end
 
       def lock(path:, ppath:)
-        invalid! "expecting <lockinfo> xml body", status: 400 unless request.xml_body?
-
-        lockinfo = request.xml_body.css("> d|lockinfo:only-child", DAV_NSDECL)
-        scope    = lockinfo.at_css("> d|lockscope", DAV_NSDECL).element_children.first
-        type     = lockinfo.at_css("> d|locktype", DAV_NSDECL).element_children.first
-        owner    = lockinfo.at_css("> d|owner", DAV_NSDECL)&.children&.to_xml
-
-        invalid! "lockscope must be present" if scope.nil?
-        invalid! "lockscope must be in the DAV: namespace" if scope.namespace&.href != "DAV:"
-        invalid! "lockscope must be exclusive/shared" unless DAV_LOCKSCOPES.include? scope.name
-        invalid! "locktype only supports DAV:write" unless type in { name: "write", namespace: { href: "DAV:" } }
-
-        lid = paths.transaction do
-          pid =
-            if path.nil?
-              # lock puts an empty resource to unknown paths, preemptively locked
-              invalid! "intermediate paths must exist!", status: 409 if ppath.nil?
-              paths.insert(pid: ppath[:id], path: request.path.basename)
-            else
-              path[:id]
-            end
-
-          paths
-            .send(:locks)
-            .returning(:id)
-            .insert(
-              id: Sequel.function(:uuid),
-              pid: pid,
-              deep: request.dav_depth == :infinity,
-              type: type.name,
-              scope: scope.name,
-              owner: owner,
-              timeout: request.dav_timeout,
-              refreshed_at: Time.now.to_i,
-              created_at: Time.now.to_i
-            )
-            .then { _1.first[:id] }
+        if request.xml_body?
+          lock_grant(path:, ppath:)
+        else
+          lock_refresh(path:, ppath:)
         end
+      end
 
-        lock = paths.send(:locks_live).where(id: lid).first
-        builder = Nokogiri::XML::Builder.new do |xml|
-          xml["d"].prop("xmlns:d" => "DAV:") do
-            xml["d"].lockdiscovery do
-              xml["d"].activelock do
-                xml["d"].locktype { xml["d"].send(lock[:type]) }
-                xml["d"].lockscope { xml["d"].send(lock[:scope]) }
-                xml["d"].depth (lock[:deep] ? "infinity" : 0)
-                xml["d"].owner Nokogiri::XML.fragment(lock[:owner]).to_xml
-                xml["d"].timeout(lock[:remaining].then { "Second-#{_1}" })
-                xml["d"].locktoken { xml["d"].href "urn:uuid:#{lid}" }
-                xml["d"].lockroot { xml["d"].href request.path_info }
-              end
-            end
-          end
-        end
+      def unlock(path:, ppath:)
+        invalid! "not found", status: 404 if path.nil?
+        validate_lock!(path:, direct: true)
 
-        response.headers.merge! "lock-token" => "urn:uuid:#{lid}"
-        response.headers.merge! "content-type" => "application/xml"
-        response.body = [builder.to_xml]
-
-        complete 200
+        paths.send(:locks).where(id: path[:lockid]).delete
+        complete 204
       end
 
       private
@@ -249,6 +211,8 @@ module Dav
       def put_insert(ppath:)
         invalid! "intermediate path not found", status: 409 if ppath.nil?
         invalid! "parent must be a collection", status: 409 if ppath[:ctype].nil?
+
+        validate_lock!(path: ppath)
 
         paths.transaction do
           pid  = ppath[:id]
@@ -274,6 +238,7 @@ module Dav
       # update a resource at the given path
       def put_update(path:)
         invalid "not found", status: 404 if path.nil?
+        validate_lock!(path:)
 
         pid     = path[:id]
         display = CGI.unescape(path[:path])
@@ -302,10 +267,13 @@ module Dav
           unless extant.nil?
             invalid! "destination must not already exist", status: 412 unless request.dav_overwrite?
 
+            validate_lock!(path: extant)
             paths.delete(id: extant[:id])
           end
 
+          validate_lock!(path: pdest)
           if move
+            validate_lock!(path:)
             paths.move_tree(id: path[:id], dpid: pdest[:id], dpath: dest.basename)
           else
             paths.clone_tree(id: path[:id], dpid: pdest[:id], dpath: dest.basename)
@@ -402,6 +370,143 @@ module Dav
         response.body            = [builder.to_xml]
         response["Content-Type"] = "application/xml"
         response.finish
+      end
+
+      def check_ifstate(path:)
+        return true if request.dav_ifstate.nil? # nothing to check
+
+        request.dav_ifstate.clauses.any? do |clause|
+          upath =
+            if clause.uri.nil?
+              path
+            else
+              uri = clause.uri.dup
+              uri.delete_prefix! request.base_url
+              uri.delete_prefix! request.script_name
+
+              paths.at_path(uri)
+            end
+
+          clause.predicates.all? do |p|
+            case p
+            when IfStateTokenPredicate
+              toggle_bool(upath && (p.token == "urn:uuid:#{upath[:plockid]}?=lock"), p.inv)
+
+            when IfStateEtagPredicate
+              resource = upath && paths.resource_at(pid: upath[:id])
+              toggle_bool(resource && (p.etag == resource[:etag]), p.inv)
+            end
+          end
+        end
+      end
+
+      def validate_lock!(path:, direct: false)
+        invalid! status: 412 unless check_ifstate(path:)
+
+        lid = path&.[](direct ? :lockid : :plockid)
+        return unless lid
+
+        token = "urn:uuid:#{lid}?=lock"
+        invalid! status: 423 unless request.dav_submitted_tokens.include?(token)
+      end
+
+      def toggle_bool(bool, toggle) = toggle ? !bool : bool
+
+      # grant a lock on tha path
+      def lock_grant(path:, ppath:)
+        validate_lock!(path:)
+
+        lockinfo = request.xml_body.css("> d|lockinfo:only-child", DAV_NSDECL)
+        scope    = lockinfo.at_css("> d|lockscope", DAV_NSDECL).element_children.first
+        type     = lockinfo.at_css("> d|locktype", DAV_NSDECL).element_children.first
+        owner    = lockinfo.at_css("> d|owner", DAV_NSDECL)&.children&.to_xml
+
+        invalid! "lockscope must be present" if scope.nil?
+        invalid! "lockscope must be in the DAV: namespace" if scope.namespace&.href != "DAV:"
+        invalid! "lockscope must be exclusive/shared" unless DAV_LOCKSCOPES.include? scope.name
+        invalid! "locktype only supports DAV:write" unless type in { name: "write", namespace: { href: "DAV:" } }
+
+        lid = paths.transaction do
+          # lock puts an empty resource to unknown paths, preemptively locked
+          pid = path&.[](:id) || begin
+            invalid! "intermediate paths must exist!", status: 409 if ppath.nil?
+            paths.insert(pid: ppath[:id], path: request.path.basename)
+          end
+
+          paths
+            .send(:locks)
+            .returning(:id)
+            .insert(
+              id: Sequel.function(:uuid),
+              pid:,
+              deep: request.dav_depth == :infinity,
+              type: type.name,
+              scope: scope.name,
+              owner:,
+              timeout: request.dav_timeout,
+              refreshed_at: Time.now.to_i,
+              created_at: Time.now.to_i
+            )
+            .then { _1.first[:id] }
+        end
+
+        lock    = paths.send(:locks_live).where(id: lid).first
+        builder = Nokogiri::XML::Builder.new do |xml|
+          xml["d"].prop("xmlns:d" => "DAV:") do
+            xml["d"].lockdiscovery do
+              xml["d"].activelock do
+                xml["d"].locktype { xml["d"].send(lock[:type]) }
+                xml["d"].lockscope { xml["d"].send(lock[:scope]) }
+                xml["d"].depth(lock[:deep] ? "infinity" : 0)
+                xml["d"].owner Nokogiri::XML.fragment(lock[:owner]).to_xml
+                xml["d"].timeout(lock[:remaining].then { "Second-#{_1}" })
+                xml["d"].locktoken { xml["d"].href "urn:uuid:#{lid}?=lock" }
+                xml["d"].lockroot { xml["d"].href request.path_info }
+              end
+            end
+          end
+        end
+
+        response.headers.merge! "lock-token" => "urn:uuid:#{lid}?=lock"
+        response.headers.merge! "content-type" => "application/xml"
+        response.body = [builder.to_xml]
+
+        complete 200
+      end
+
+      # refresh the lock on a path
+      def lock_refresh(path:, ppath:)
+        invalid! "not found!", status: 404 unless path
+        invalid! "cant refresh an unlocked lock", status: 412 unless path[:lockid]
+
+        validate_lock!(path:, direct: true)
+
+        lid  = path[:lockid]
+        lock = paths.send(:locks).where(id: lid)
+        lock.update(timeout: request.dav_timeout, refreshed_at: Time.now.to_i)
+
+        lock    = paths.send(:locks_live).where(id: lid).first
+        builder = Nokogiri::XML::Builder.new do |xml|
+          xml["d"].prop("xmlns:d" => "DAV:") do
+            xml["d"].lockdiscovery do
+              xml["d"].activelock do
+                xml["d"].locktype { xml["d"].send(lock[:type]) }
+                xml["d"].lockscope { xml["d"].send(lock[:scope]) }
+                xml["d"].depth(lock[:deep] ? "infinity" : 0)
+                xml["d"].owner Nokogiri::XML.fragment(lock[:owner]).to_xml
+                xml["d"].timeout(lock[:remaining].then { "Second-#{_1}" })
+                xml["d"].locktoken { xml["d"].href "urn:uuid:#{lid}?=lock" }
+                xml["d"].lockroot { xml["d"].href request.path_info }
+              end
+            end
+          end
+        end
+
+        response.headers.merge! "lock-token" => "urn:uuid:#{lid}?=lock"
+        response.headers.merge! "content-type" => "application/xml"
+        response.body = [builder.to_xml]
+
+        complete 200
       end
 
       # given an xml builder, render a <DAV:propstat> block
