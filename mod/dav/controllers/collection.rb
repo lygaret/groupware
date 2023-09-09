@@ -389,10 +389,10 @@ module Dav
 
           clause.predicates.all? do |p|
             case p
-            when IfStateTokenPredicate
+            when IfState::TokenPredicate
               toggle_bool(upath && (p.token == "urn:uuid:#{upath[:plockid]}?=lock"), p.inv)
 
-            when IfStateEtagPredicate
+            when IfState::EtagPredicate
               resource = upath && paths.resource_at(pid: upath[:id])
               toggle_bool(resource && (p.etag == resource[:etag]), p.inv)
             end
