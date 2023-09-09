@@ -123,5 +123,19 @@ module Dav
       @dav_ifstate ||= IfState.parse get_header("HTTP_IF")
     end
 
+    def dav_locktoken
+      @dav_locktoken ||= begin
+        header = get_header("HTTP_LOCK_TOKEN")
+        header&.sub(/<([^>]+)>/, "\\1")
+      end
+    end
+
+    def dav_submitted_tokens
+      iftokens  = dav_ifstate&.submitted_tokens&.dup || []
+      iftokens << dav_locktoken if dav_locktoken
+
+      iftokens
+    end
+
   end
 end
