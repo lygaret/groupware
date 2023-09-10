@@ -21,9 +21,9 @@ module Dav
     # thrown when a request is malformed, either in body or headers
     class MalformedRequestError < HaltRequest
 
-      def initialize(...)
-        super
-        @status = 400
+      def initialize(**headers)
+        headers = headers.merge(status: 400)
+        super(**headers)
       end
 
     end

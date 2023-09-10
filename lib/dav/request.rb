@@ -45,7 +45,7 @@ module Dav
             Nokogiri::XML.parse(content) { |config| config.strict.pedantic.nsclean }
           end
         rescue StandardError
-          raise errors::MalformedRequestError.new(status: 400), "couldn't parse xml body!"
+          raise Errors::MalformedRequestError.new(status: 400), "couldn't parse xml body!"
         end
     end
 
