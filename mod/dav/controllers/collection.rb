@@ -16,6 +16,7 @@ module Dav
 
       DAV_NSDECL     = { d: "DAV:" }.freeze
       DAV_LOCKSCOPES = %w[exclusive shared].freeze
+      DAV_LOCKTYPES  = %w[write].freeze
 
       OPTIONS_SUPPORTED_METHODS = %w[
         OPTIONS HEAD GET PUT DELETE
@@ -201,7 +202,10 @@ module Dav
         invalid! "not found", status: 404 if path.nil?
         validate_lock!(path:, direct: true)
 
-        paths.send(:locks).where(id: path[:lockid]).delete
+        match = request.dav_locktoken&.match(/urn:uuid:(?<lid>[0-9a-f-]+)\?=lock/i)
+        invalid! "locktoken invalid format", status: 423 if match.nil?
+
+        paths.send(:locks).where(id: match[:lid]).delete
         complete 204
       end
 
@@ -376,6 +380,8 @@ module Dav
       def check_ifstate(path:)
         return true if request.dav_ifstate.nil? # nothing to check
 
+        pathlocks = path && path[:plockids] && path[:plockids].split(",").map { "urn:uuid:#{_1}?=lock" }
+
         request.dav_ifstate.clauses.any? do |clause|
           upath =
             if clause.uri.nil?
@@ -391,7 +397,7 @@ module Dav
           clause.predicates.all? do |p|
             case p
             when IfState::TokenPredicate
-              toggle_bool(upath && (p.token == "urn:uuid:#{upath[:plockid]}?=lock"), p.inv)
+              toggle_bool(pathlocks && pathlocks.include?(p.token), p.inv)
 
             when IfState::EtagPredicate
               resource = upath && paths.resource_at(pid: upath[:id])
@@ -404,50 +410,66 @@ module Dav
       def validate_lock!(path:, direct: false)
         invalid! status: 412 unless check_ifstate(path:)
 
-        lid = path&.[](direct ? :lockid : :plockid)
-        return unless lid
+        # we have to check against all locks a resource may have
+        # if there's multiple, it's because they're shared
+        lids = path&.[](direct ? :lockids : :plockids)
+        return unless lids
 
-        token = "urn:uuid:#{lid}?=lock"
-        invalid! status: 423 unless request.dav_submitted_tokens.include?(token)
+        tokens  = lids.split(",").map { "urn:uuid:#{_1}?=lock" }
+        matches = tokens.intersection request.dav_submitted_tokens
+
+        logger.info("VALIDATE LOCK!", tokens:, matches:)
+
+        invalid! status: 423 if matches.empty?
       end
 
       def toggle_bool(bool, toggle) = toggle ? !bool : bool
 
       # grant a lock on tha path
       def lock_grant(path:, ppath:)
-        validate_lock!(path:)
+        invalid status: 412 unless check_ifstate(path:)
 
         lockinfo = request.xml_body.css("> d|lockinfo:only-child", DAV_NSDECL)
-        scope    = lockinfo.at_css("> d|lockscope", DAV_NSDECL).element_children.first
-        type     = lockinfo.at_css("> d|locktype", DAV_NSDECL).element_children.first
+        scope    = lockinfo.at_css("> d|lockscope", DAV_NSDECL).element_children.first&.name
+        type     = lockinfo.at_css("> d|locktype", DAV_NSDECL).element_children.first&.name
         owner    = lockinfo.at_css("> d|owner", DAV_NSDECL)&.children&.to_xml
 
-        invalid! "lockscope must be present" if scope.nil?
-        invalid! "lockscope must be in the DAV: namespace" if scope.namespace&.href != "DAV:"
-        invalid! "lockscope must be exclusive/shared" unless DAV_LOCKSCOPES.include? scope.name
-        invalid! "locktype only supports DAV:write" unless type in { name: "write", namespace: { href: "DAV:" } }
+        pid      = path&.[](:id)
+        deep     = request.dav_depth == :infinity
+        timeout  = request.dav_timeout
+        now      = Time.now.to_i
 
-        lid = paths.transaction do
+        invalid! "lockscope must be present" if scope.nil?
+        invalid! "lockscope must be exclusive/shared" unless DAV_LOCKSCOPES.include? scope
+        invalid! "locktype must be supported" unless DAV_LOCKTYPES.include? type
+
+        extantids = path&.[](:plockids)&.split(",")
+        extants   = extantids && paths.send(:locks_live).where(id: extantids).all
+
+        if extants
+          # can't ask for exclusive over any extant lock
+          invalid! "already locked!", status: 423 if scope == "exclusive" && !extants.empty?
+
+          # can't ask for shared over any exclusive
+          invalid! "already locked!", status: 423 if extants.any? { _1[:scope] == "exclusive" }
+        end
+
+        status = 200
+        lid    = paths.transaction do
           # lock puts an empty resource to unknown paths, preemptively locked
-          pid = path&.[](:id) || begin
+          if pid.nil?
             invalid! "intermediate paths must exist!", status: 409 if ppath.nil?
-            paths.insert(pid: ppath[:id], path: request.path.basename)
+
+            status = 201
+            pid    = paths.insert(pid: ppath[:id], path: request.path.basename)
           end
+
+          logger.info "GRANT: #{request.dav_depth} #{type} #{scope} #{owner} #{request.dav_timeout}"
 
           paths
             .send(:locks)
             .returning(:id)
-            .insert(
-              id: Sequel.function(:uuid),
-              pid:,
-              deep: request.dav_depth == :infinity,
-              type: type.name,
-              scope: scope.name,
-              owner:,
-              timeout: request.dav_timeout,
-              refreshed_at: Time.now.to_i,
-              created_at: Time.now.to_i
-            )
+            .insert(id: Sequel.function(:uuid), pid:, deep:, type:, scope:, owner:, timeout:, refreshed_at: now, created_at: now)
             .then { _1.first[:id] }
         end
 
@@ -472,17 +494,23 @@ module Dav
         response.headers.merge! "content-type" => "application/xml"
         response.body = [builder.to_xml]
 
-        complete 200
+        complete status
       end
 
       # refresh the lock on a path
       def lock_refresh(path:, ppath:)
         invalid! "not found!", status: 404 unless path
-        invalid! "cant refresh an unlocked lock", status: 412 unless path[:lockid]
+        invalid! "cant refresh an unlocked lock", status: 412 unless path[:plockids]
 
-        validate_lock!(path:, direct: true)
+        validate_lock!(path:)
 
-        lid  = path[:lockid]
+        tokens = request.dav_submitted_tokens
+        invalid! "more than one token submitted!", status: 412 unless tokens.length == 1
+
+        match  = tokens[0].match(/urn:uuid:(?<lid>[0-9a-f-]+)\?=lock/i)
+        invalid! "weird token format", status: 400 unless match
+
+        lid  = match[:lid]
         lock = paths.send(:locks).where(id: lid)
         lock.update(timeout: request.dav_timeout, refreshed_at: Time.now.to_i)
 

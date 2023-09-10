@@ -55,6 +55,9 @@ Layout/ExtraSpacing:
   AllowBeforeTrailingComments: true
   ForceEqualSignAlignment: true
 
+Layout/LineLength:
+  Enabled: false
+
 Layout/MultilineMethodCallIndentation:
   EnforcedStyle: indented_relative_to_receiver
 

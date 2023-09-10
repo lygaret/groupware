@@ -86,9 +86,7 @@ module Dav
           dest = get_header("HTTP_DESTINATION")
           unless dest.nil?
             raise Errors::MalformedRequestError, "destination is external!" unless dest.delete_prefix!(base_url)
-            unless dest.delete_prefix!(script_name) || script_name == ""
-              raise Errors::MalformedRequestError, "destination is external!"
-            end
+            raise Errors::MalformedRequestError, "destination is external!" unless dest.delete_prefix!(script_name) || script_name == ""
           end
 
           dest && Pathname.parse(dest)

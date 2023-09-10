@@ -14,14 +14,15 @@ module Repos
     # @param fullpath [String] the full path to find (eg. "/some/full/path")
     # @return [Hash] the path row at the given full path
     def at_path(fullpath)
+      fullpath       = fullpath.chomp("/") # normalize for collections
       filtered_paths = connection[:paths_extra].where(fullpath:)
       paths
         .join(filtered_paths, { id: :id }, table_alias: :extra)
         .select_append(:extra[:fullpath])
         .select_append(:extra[:pctype])
-        .select_append(:extra[:lockid])
-        .select_append(:extra[:plockid])
-        .select_append(:extra[:lockdeep])
+        .select_append(:extra[:lockids])
+        .select_append(:extra[:plockids])
+        .select_append(:extra[:lockdeeps])
         .first
     end
 

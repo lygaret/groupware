@@ -3,7 +3,7 @@
 Sequel.migration do
   up do
     run <<~SQL
-      CREATE VIEW paths_extra (id, pid, path, fullpath, depth, ctype, pctype, lockid, plockid, lockdeep) AS
+      CREATE VIEW paths_extra (id, pid, path, fullpath, depth, ctype, pctype, lockids, plockids, lockdeeps) AS
         WITH RECURSIVE parents (id, pid, path, fullpath, depth, ctype, pctype, lockid, plockid, lockdeep) AS (
           SELECT
               paths.id
@@ -35,7 +35,19 @@ Sequel.migration do
           LEFT OUTER JOIN locks_live locks ON (locks.pid = paths.id)
           INNER JOIN parents ON (paths.pid = parents.id)
         )
-        SELECT * FROM parents
+        SELECT
+            parents.id
+          , parents.pid
+          , parents.path
+          , parents.fullpath
+          , parents.depth
+          , parents.ctype
+          , parents.pctype
+          , group_concat(parents.lockid) as lockids
+          , group_concat(parents.plockid) as plockids
+          , group_concat(parents.lockdeep) as plockdeeps
+        FROM parents
+        GROUP BY parents.id
     SQL
   end
 
