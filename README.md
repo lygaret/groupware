@@ -8,6 +8,17 @@ A `*DAV` server, supporting:
 - [ ] CalDAV
 - [ ] CardDAV
 
+# Relevant RFCs
+
+- [x] [RFC 2518 - WebDAV (old)](http://www.webdav.org/specs/rfc2518.html)
+- [x] [RFC 4918 - WebDAV (newer)](http://www.webdav.org/specs/rfc4918.html)
+- [ ] [RFC 3474 - WebDAV ACLs](http://www.webdav.org/specs/rfc3744.html)
+- [ ] [RFC 4791 - CalDAV over WebDAV](https://datatracker.ietf.org/doc/html/rfc4791)
+- [ ] [RFC 6352 - CardDAV over WebDAV](https://datatracker.ietf.org/doc/html/rfc6352)
+
+I do _not_ plan on supporting any of:
+- [RFC 3253 - WebDAV Versioning](http://www.webdav.org/specs/rfc3253.html) not planning on supporting
+
 # Running
 
 * see `.env.development` for configuration
