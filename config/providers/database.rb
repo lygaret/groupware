@@ -26,6 +26,10 @@ System::Container.register_provider(:database) do
             func.result = SecureRandom.uuid
           end
 
+          c.create_function("escape_url", 1) do |func, str|
+            func.result = CGI.escape str
+          end
+
           c.create_function("unescape_url", 1) do |func, str|
             func.result = CGI.unescape str
           end
