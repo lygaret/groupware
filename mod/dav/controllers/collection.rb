@@ -24,6 +24,11 @@ module Dav
         PROPFIND PROPPATCH
       ].join(",").freeze
 
+      # TODO: support range header
+      GET_DEFAULT_HEADERS = {
+        "Accept-Ranges" => "none"
+      }.freeze
+
       # OPTIONS http method
       # - respond with allowed methods
       # - TODO: cors? what else?
@@ -34,37 +39,32 @@ module Dav
 
       # HEAD http method
       # returns the headers for a resource at a given path, but includes no body
-      def head(path:, ppath:)
-        get(path:, ppath:, include_body: false)
-      end
+      def head(path:, ppath:) = get(path:, ppath:, include_body: false)
 
       # GET http method
       # returns the resource at a given path
       def get(path:, ppath:, include_body: true)
         invalid! "not found", status: 404 if path.nil?
+        complete! 204 if path[:ctype] # no content for a collection
 
-        if path[:ctype]
-          complete 204 # no content for a collection
-        else
           resource = paths.resource_at(pid: path[:id])
-          if resource.nil?
-            complete 204 # no content at path!
-          else
-            headers  = {
-              "Content-Type" => resource[:type],
-              "Content-Length" => resource[:length].to_s,
-              "Last-Modified" => Time.at(resource[:updated_at] || resource[:created_at]).rfc2822,
-              "ETag" => resource[:etag]
-            }
-            headers.reject! { _2.nil? }
+        complete! 204 if resource.nil? # no content at path!
 
-            response.body = [resource[:content]] if include_body
-            response.headers.merge! headers
+        # resource exists, merge into response
+        response.headers.merge! GET_DEFAULT_HEADERS
+        response.headers.merge!(
+              "Content-Type" => resource[:type],
+          "ETag" => resource[:etag],
+          "Last-Modified" => Time.at(resource[:updated_at] || resource[:created_at]).httpdate
+        )
+
+        if include_body
+          response.body = paths.resource_reader(rid: resource[:id])
+          response.headers.merge!("Content-Length" => resource[:length].to_s)
+        end
 
             complete 200
           end
-        end
-      end
 
       # MKCOL http (webdav) method
       # creates a collection at the given path
@@ -229,7 +229,7 @@ module Dav
           type     = request.dav_content_type
           length   = request.dav_content_length
           lang     = request.get_header("content-language")
-          content  = request.md5_body.gets
+          content  = request.md5_body.read(length)
           etag     = request.md5_body.hexdigest
 
           # insert the resource at that path
@@ -298,7 +298,7 @@ module Dav
             properties.each do |fullpath, props|
               xml["d"].response do
                 xml["d"].href fullpath
-                render_propstat_row(xml:, status: "200 OK", props:) do |row|
+                render_propstat(xml:, status: "200 OK", props:) do |row|
                   render_row(xml:, row:, shallow:)
                 end
               end

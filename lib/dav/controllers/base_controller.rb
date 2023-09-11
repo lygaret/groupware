@@ -25,9 +25,16 @@ module Dav
       # @param status [Integer] the http status code for the response
       # @return [Array] the rack response
       def complete(status)
+        # remove nils from headers
+        response.headers.filter! { _2 }
         response.status = status
         response.finish
       end
+
+      # sets the response status and finishes the response
+      # @param status [Integer] the http status code for the response
+      # @throws [:complete] the rack response
+      def complete!(status) = throw :complete, complete(status)
 
       # raises in order to stop request processing in the router
       # @param reason [String] a descriptive reason

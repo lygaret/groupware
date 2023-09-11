@@ -3,6 +3,7 @@
 require "json"
 require "nokogiri"
 
+require "dav/ifstate"
 require "repos/base_repo"
 
 module Repos
@@ -11,11 +12,21 @@ module Repos
 
     include System::Import["db.connection"]
 
+    # simple iterator to return just the contents of a resource
+    # TODO: support range reading
+    # TODO: support chunked reading/streaming
+    ResourceContentIterator = Data.define(:resources, :rid) do
+      def each
+        yield resources.where(id: rid).get(:content)&.to_s
+      end
+    end
+
     # @param fullpath [String] the full path to find (eg. "/some/full/path")
     # @return [Hash] the path row at the given full path
     def at_path(fullpath)
       fullpath       = fullpath.chomp("/") # normalize for collections
       filtered_paths = connection[:paths_extra].where(fullpath:)
+
       paths
         .join(filtered_paths, { id: :id }, table_alias: :extra)
         .select_append(:extra[:fullpath])
@@ -66,8 +77,14 @@ module Repos
     end
 
     # @param pid [UUID] the id of the path node to search
-    # @return [Hash] the resource row at the given path id
-    def resource_at(pid:) = resources.where(pid:).first
+    # @return [Hash] the resource row at the given path id, (without content)
+    def resource_at(pid:)
+      cols = resources.columns.reject { _1 == :content }
+      resources.where(pid:).select(*cols).first
+    end
+
+    # @return [#each] an iterator over resource content
+    def resource_reader(rid:) = ResourceContentIterator.new(resources, rid)
 
     # clears the resource under the given path
     # @param pid [UUID] the id of the path node to clear
@@ -252,6 +269,43 @@ module Repos
       remove_properties(pid:, rid:, user:, filters:)
     end
 
+    # validate the ifstate struct, using the current path as context for untagged clauses
+    # @param ifstate [IfState] the ifstate to check; if nil, returns true.
+    # @param context_path [Hash] the pathrow to use in untagged clauses
+    # @return [Bool]
+    def check_ifstate(request, context_path:)
+      return true if request.dav_ifstate.nil?
+
+      request.dav_ifstate.clauses.any? do |clause|
+        path =
+          if clause.uri.nil?
+            context_path
+          else
+            # TODO: url normalization; we're doing the same thing elsewhere
+            uri = clause.uri.dup
+            uri.delete_prefix! request.base_url
+            uri.delete_prefix! request.script_name
+
+            # resource being nil is ok; it's part of the checking
+            # ie. a NOT rule that includes a missing path
+            at_path(uri)
+          end
+
+        clause.predicates.all? do |pred|
+          case pred
+          when Dav::IfState::TokenPredicate
+            pathlocks = path&.[](:plockids)&.split(",")&.map { "urn:uuid:#{_1}?=lock" }
+            toggle_bool(pathlocks&.include?(pred.token), pred.inv)
+
+          when Dav::IfState::EtagPredicate
+            properties = path && properties_at(pid: path[:id], depth: 0, filters: [{ xmlel: "getetag" }])
+            property   = properties&.[](path && path[:fullpath])&.first
+            toggle_bool(property && (pred.etag == property[:content].to_s), pred.inv)
+          end
+        end
+      end
+    end
+
     private
 
     def paths      = connection[:paths]
@@ -262,24 +316,28 @@ module Repos
     def locks      = connection[:locks]
     def locks_live = connection[:locks_live]
 
+    def toggle_bool(bool, toggle) = toggle ? !bool : bool
+
     def clone_tree_sql
       @clone_tree_sql ||= File.read File.join(__dir__, "./queries/clone_tree.sql")
     end
 
     # returns properties filtered to the given set of property xmlns/xmlel
     def filtered_properties(filters)
-      if filters
-        # reduce the filters over `or`, false is the identity there
-        initial = properties.where(false)
-        filters.reduce(initial) { |scope, filter| scope.or filter }
-      else
-        connection[:properties]
-      end
+      return properties unless filters
+
+      # reduce the filters over `or`, false is the identity there
+      initial = properties.where(false)
+      filters.reduce(initial) { |scope, filter| scope.or filter }
     end
 
     # recursive cte to collect fullpath information for descendents of the given pid
     def with_descendents(pid, depth:)
       base_depth = connection[:paths_extra].where(id: pid).get(:depth)
+
+      # NOTE: most of this depends on the structure of the `paths_extra` view
+      # and this CTE is just here to be able to select the full descendant tree
+
       connection[:descendents]
         .with_recursive(
           :descendents,

@@ -68,7 +68,9 @@ module Dav
 
     def call_forward(controller, methname, path:, ppath:, env:)
       if controller.respond_to? methname
-        controller.with_env(env).send(methname, path:, ppath:)
+        catch(:complete) do
+          controller.with_env(env).send(methname, path:, ppath:)
+        end
       else
         respond(methname, "method not supported", status: 405)
       end
