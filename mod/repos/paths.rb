@@ -20,8 +20,8 @@ module Repos
       def self.from_token(token)
         return token if token.is_a? LockId
 
-        match = token.match /urn:uuid:(?<lid>[0-9a-f-]+)\?=lock/i
-        match && self.new(match[:lid])
+        match = token.match(/urn:uuid:(?<lid>[0-9a-f-]+)\?=lock/i)
+        match && new(match[:lid])
       end
 
       def token = "urn:uuid:#{lid}?=lock"
