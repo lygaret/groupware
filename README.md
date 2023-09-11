@@ -85,5 +85,5 @@ Currently, we're testing against the [WebDAV.org Litmus Compliance Suite](http:/
 
 # License
 
-Copyright 2023 Jon Raphaelson, Accidental.cc LLC
+Copyright 2023 Jon Raphaelson, Accidental.cc LLC\
 This is proprietary, for the time being.
