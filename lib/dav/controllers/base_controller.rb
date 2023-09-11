@@ -44,6 +44,10 @@ module Dav
         raise Errors::HaltRequest.new(status:), reason
       end
 
+      def failure!(reason = nil, status: 500)
+        raise Errors::HaltRequest.new(status:), reason
+      end
+
     end
   end
 end

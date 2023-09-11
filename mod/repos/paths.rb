@@ -10,7 +10,22 @@ module Repos
   # the data access layer to the path storage
   class Paths < BaseRepo
 
-    include System::Import["db.connection"]
+    include System::Import[
+      "db.connection",
+      "logger"
+    ]
+
+    # data wrapper for lock ids, which can parse and generate tokens
+    LockId = Data.define(:lid) do
+      def self.from_token(token)
+        return token if token.is_a? LockId
+
+        match = token.match /urn:uuid:(?<lid>[0-9a-f-]+)\?=lock/i
+        match && self.new(match[:lid])
+      end
+
+      def token = "urn:uuid:#{lid}?=lock"
+    end
 
     # simple iterator to return just the contents of a resource
     # TODO: support range reading
@@ -127,6 +142,12 @@ module Repos
         .insert(**values)
         .then { _1.first[:id] }
         .then { set_properties(rid: _1, user: false, props:) }
+    end
+
+    # get the single property on either a path or resource (by id)
+    def property_at(pid: nil, rid: nil, xmlns: "DAV:", xmlel:)
+      props = properties_at(pid:, rid:, depth: 0, filters: [{ xmlns:, xmlel: }])
+      props.to_a.first&.[](1)&.first
     end
 
     # fetch a batch of properties on either a path (recursively, up to depth) or a resource (by id),
@@ -269,41 +290,38 @@ module Repos
       remove_properties(pid:, rid:, user:, filters:)
     end
 
-    # validate the ifstate struct, using the current path as context for untagged clauses
-    # @param ifstate [IfState] the ifstate to check; if nil, returns true.
-    # @param context_path [Hash] the pathrow to use in untagged clauses
-    # @return [Bool]
-    def check_ifstate(request, context_path:)
-      return true if request.dav_ifstate.nil?
+    # insert a lock on the given pid
+    def grant_lock(pid:, deep:, type:, scope:, owner:, timeout:)
+      now = Time.now.utc.to_i
+      locks
+        .returning(:id)
+        .insert(id: Sequel.function(:uuid), pid:, deep:, type:, scope:, owner:, timeout:, refreshed_at: now, created_at: now)
+        .then { LockId.new(_1.first[:id]) }
+    end
 
-      request.dav_ifstate.clauses.any? do |clause|
-        path =
-          if clause.uri.nil?
-            context_path
-          else
-            # TODO: url normalization; we're doing the same thing elsewhere
-            uri = clause.uri.dup
-            uri.delete_prefix! request.base_url
-            uri.delete_prefix! request.script_name
+    # refresh the lock at the token
+    def refresh_lock(token:, timeout:)
+      id  = LockId.from_token(token)
+      now = Time.now.utc.to_i
 
-            # resource being nil is ok; it's part of the checking
-            # ie. a NOT rule that includes a missing path
-            at_path(uri)
-          end
+      id && locks.where(id: id.lid).update(timeout:, refreshed_at: now)
+    end
 
-        clause.predicates.all? do |pred|
-          case pred
-          when Dav::IfState::TokenPredicate
-            pathlocks = path&.[](:plockids)&.split(",")&.map { "urn:uuid:#{_1}?=lock" }
-            toggle_bool(pathlocks&.include?(pred.token), pred.inv)
+    # pull the lock given the given token
+    def lock_info(token:)
+      id = LockId.from_token(token)
+      return nil if id.nil?
 
-          when Dav::IfState::EtagPredicate
-            properties = path && properties_at(pid: path[:id], depth: 0, filters: [{ xmlel: "getetag" }])
-            property   = properties&.[](path && path[:fullpath])&.first
-            toggle_bool(property && (pred.etag == property[:content].to_s), pred.inv)
-          end
-        end
-      end
+      info = locks_live.where(id: id.lid).first
+      return nil if info.nil?
+
+      info.merge(id:)
+    end
+
+    # remove the lock for the given token
+    def clear_lock(token:)
+      id = LockId.from_token(token)
+      id && locks.where(id: id.lid).delete
     end
 
     private

@@ -47,13 +47,13 @@ module Dav
         invalid! "not found", status: 404 if path.nil?
         complete! 204 if path[:ctype] # no content for a collection
 
-          resource = paths.resource_at(pid: path[:id])
+        resource = paths.resource_at(pid: path[:id])
         complete! 204 if resource.nil? # no content at path!
 
         # resource exists, merge into response
         response.headers.merge! GET_DEFAULT_HEADERS
         response.headers.merge!(
-              "Content-Type" => resource[:type],
+          "Content-Type" => resource[:type],
           "ETag" => resource[:etag],
           "Last-Modified" => Time.at(resource[:updated_at] || resource[:created_at]).httpdate
         )
@@ -63,8 +63,8 @@ module Dav
           response.headers.merge!("Content-Length" => resource[:length].to_s)
         end
 
-            complete 200
-          end
+        complete 200
+      end
 
       # MKCOL http (webdav) method
       # creates a collection at the given path
@@ -202,10 +202,7 @@ module Dav
         invalid! "not found", status: 404 if path.nil?
         validate_lock!(path:, direct: true)
 
-        match = request.dav_locktoken&.match(/urn:uuid:(?<lid>[0-9a-f-]+)\?=lock/i)
-        invalid! "locktoken invalid format", status: 423 if match.nil?
-
-        paths.send(:locks).where(id: match[:lid]).delete
+        paths.clear_lock(token: request.dav_locktoken)
         complete 204
       end
 
@@ -377,57 +374,9 @@ module Dav
         response.finish
       end
 
-      def check_ifstate(path:)
-        return true if request.dav_ifstate.nil? # nothing to check
-
-        pathlocks = path && path[:plockids] && path[:plockids].split(",").map { "urn:uuid:#{_1}?=lock" }
-
-        request.dav_ifstate.clauses.any? do |clause|
-          upath =
-            if clause.uri.nil?
-              path
-            else
-              uri = clause.uri.dup
-              uri.delete_prefix! request.base_url
-              uri.delete_prefix! request.script_name
-
-              paths.at_path(uri)
-            end
-
-          clause.predicates.all? do |p|
-            case p
-            when IfState::TokenPredicate
-              toggle_bool(pathlocks && pathlocks.include?(p.token), p.inv)
-
-            when IfState::EtagPredicate
-              resource = upath && paths.resource_at(pid: upath[:id])
-              toggle_bool(resource && (p.etag == resource[:etag]), p.inv)
-            end
-          end
-        end
-      end
-
-      def validate_lock!(path:, direct: false)
-        invalid! status: 412 unless check_ifstate(path:)
-
-        # we have to check against all locks a resource may have
-        # if there's multiple, it's because they're shared
-        lids = path&.[](direct ? :lockids : :plockids)
-        return unless lids
-
-        tokens  = lids.split(",").map { "urn:uuid:#{_1}?=lock" }
-        matches = tokens.intersection request.dav_submitted_tokens
-
-        logger.info("VALIDATE LOCK!", tokens:, matches:)
-
-        invalid! status: 423 if matches.empty?
-      end
-
-      def toggle_bool(bool, toggle) = toggle ? !bool : bool
-
       # grant a lock on tha path
       def lock_grant(path:, ppath:)
-        invalid status: 412 unless check_ifstate(path:)
+        invalid! status: 412 unless check_ifstate(path:)
 
         lockinfo = request.xml_body.css("> d|lockinfo:only-child", DAV_NSDECL)
         scope    = lockinfo.at_css("> d|lockscope", DAV_NSDECL).element_children.first&.name
@@ -437,7 +386,6 @@ module Dav
         pid      = path&.[](:id)
         deep     = request.dav_depth == :infinity
         timeout  = request.dav_timeout
-        now      = Time.now.to_i
 
         invalid! "lockscope must be present" if scope.nil?
         invalid! "lockscope must be exclusive/shared" unless DAV_LOCKSCOPES.include? scope
@@ -455,7 +403,7 @@ module Dav
         end
 
         status = 200
-        lid    = paths.transaction do
+        token  = paths.transaction do
           # lock puts an empty resource to unknown paths, preemptively locked
           if pid.nil?
             invalid! "intermediate paths must exist!", status: 409 if ppath.nil?
@@ -464,33 +412,20 @@ module Dav
             pid    = paths.insert(pid: ppath[:id], path: request.path.basename)
           end
 
-          logger.info "GRANT: #{request.dav_depth} #{type} #{scope} #{owner} #{request.dav_timeout}"
-
-          paths
-            .send(:locks)
-            .returning(:id)
-            .insert(id: Sequel.function(:uuid), pid:, deep:, type:, scope:, owner:, timeout:, refreshed_at: now, created_at: now)
-            .then { _1.first[:id] }
+          logger.info("granting lock", owner:, scope:, type:, timeout:)
+          paths.grant_lock(pid:, deep:, type:, scope:, owner:, timeout:)
         end
 
-        lock    = paths.send(:locks_live).where(id: lid).first
+        lock = paths.lock_info(token:)
+        failure! "somehow our lock doesnt exist!?" unless lock
+
         builder = Nokogiri::XML::Builder.new do |xml|
           xml["d"].prop("xmlns:d" => "DAV:") do
-            xml["d"].lockdiscovery do
-              xml["d"].activelock do
-                xml["d"].locktype { xml["d"].send(lock[:type]) }
-                xml["d"].lockscope { xml["d"].send(lock[:scope]) }
-                xml["d"].depth(lock[:deep] ? "infinity" : 0)
-                xml["d"].owner Nokogiri::XML.fragment(lock[:owner]).to_xml
-                xml["d"].timeout(lock[:remaining].then { "Second-#{_1}" })
-                xml["d"].locktoken { xml["d"].href "urn:uuid:#{lid}?=lock" }
-                xml["d"].lockroot { xml["d"].href request.path_info }
-              end
-            end
+            render_lockdiscovery(xml:, lock:, root: request.path_info)
           end
         end
 
-        response.headers.merge! "lock-token" => "urn:uuid:#{lid}?=lock"
+        response.headers.merge! "lock-token" => lock[:id].token
         response.headers.merge! "content-type" => "application/xml"
         response.body = [builder.to_xml]
 
@@ -504,39 +439,83 @@ module Dav
 
         validate_lock!(path:)
 
-        tokens = request.dav_submitted_tokens
-        invalid! "more than one token submitted!", status: 412 unless tokens.length == 1
+        token = request.dav_submitted_tokens&.first
+        invalid! "no lock token submitted!", status: 412 unless token
 
-        match  = tokens[0].match(/urn:uuid:(?<lid>[0-9a-f-]+)\?=lock/i)
-        invalid! "weird token format", status: 400 unless match
+        timeout = request.dav_timeout
+        res     = paths.refresh_lock(token:, timeout:)
+        invalid! "couldn't refresh lock from token", status: 400 unless res
 
-        lid  = match[:lid]
-        lock = paths.send(:locks).where(id: lid)
-        lock.update(timeout: request.dav_timeout, refreshed_at: Time.now.to_i)
+        lock = paths.lock_info(token:)
+        failure! "somehow our lock doesnt exist!?" unless lock
 
-        lock    = paths.send(:locks_live).where(id: lid).first
         builder = Nokogiri::XML::Builder.new do |xml|
           xml["d"].prop("xmlns:d" => "DAV:") do
-            xml["d"].lockdiscovery do
-              xml["d"].activelock do
-                xml["d"].locktype { xml["d"].send(lock[:type]) }
-                xml["d"].lockscope { xml["d"].send(lock[:scope]) }
-                xml["d"].depth(lock[:deep] ? "infinity" : 0)
-                xml["d"].owner Nokogiri::XML.fragment(lock[:owner]).to_xml
-                xml["d"].timeout(lock[:remaining].then { "Second-#{_1}" })
-                xml["d"].locktoken { xml["d"].href "urn:uuid:#{lid}?=lock" }
-                xml["d"].lockroot { xml["d"].href request.path_info }
-              end
-            end
+            render_lockdiscovery(xml:, lock:, root: request.path_info)
           end
         end
 
-        response.headers.merge! "lock-token" => "urn:uuid:#{lid}?=lock"
+        response.headers.merge! "lock-token" => lock[:id].token
         response.headers.merge! "content-type" => "application/xml"
         response.body = [builder.to_xml]
 
         complete 200
       end
+
+      def validate_lock!(path:, direct: false)
+        invalid! status: 412 unless check_ifstate(path:)
+        invalid! status: 423 unless check_lock(path:, direct:)
+      end
+
+      # take a current path as context, and verify that the submitted request
+      # has presented the correct lock token to be able to use the lock.
+      def check_lock(path:, direct: false)
+        lids = path&.[](direct ? :lockids : :plockids)
+        return true unless lids
+
+        # can be more than one due to shared locks
+        # good if there's any intersection of submitted and current
+        tokens = lids.split(",").map { "urn:uuid:#{_1}?=lock" }
+        tokens.intersect? request.dav_submitted_tokens
+      end
+
+      # validate the ifstate struct, using the current path as context for untagged clauses
+      # @param ifstate [IfState] the ifstate to check; if nil, returns true.
+      # @param context_path [Hash] the pathrow to use in untagged clauses
+      # @return [Bool]
+      def check_ifstate(path:)
+        return true if request.dav_ifstate.nil?
+
+        request.dav_ifstate.clauses.any? do |clause|
+          path =
+            if clause.uri.nil?
+              path
+            else
+              # TODO: url normalization; we're doing the same thing elsewhere
+              uri = clause.uri.dup
+              uri.delete_prefix! request.base_url
+              uri.delete_prefix! request.script_name
+
+              # resource being nil is ok; it's part of the checking
+              # ie. a NOT rule that includes a missing path
+              paths.at_path(uri)
+            end
+
+          clause.predicates.all? do |pred|
+            case pred
+            when Dav::IfState::TokenPredicate
+              pathlocks = path&.[](:plockids)&.split(",")&.map { "urn:uuid:#{_1}?=lock" }
+              toggle_bool(pathlocks&.include?(pred.token), pred.inv)
+
+            when Dav::IfState::EtagPredicate
+              property = path && paths.property_at(pid: path[:id], xmlel: "getetag")
+              toggle_bool(property && (pred.etag == property[:content].to_s), pred.inv)
+            end
+          end
+        end
+      end
+
+      def toggle_bool(bool, toggle) = toggle ? !bool : bool
 
       # given an xml builder, render a <DAV:propstat> block
       def render_propstat(xml:, status:, props:, &block)
@@ -565,6 +544,27 @@ module Dav
         else
           attrs.merge! xmlns: row[:xmlns]
           xml.send(row[:xmlel], **attrs, &content)
+        end
+      end
+
+      # given an xml builder and a lock, render a <DAV:lockdiscovery> block
+      def render_lockdiscovery(xml:, root:, lock:)
+        xml["d"].lockdiscovery do
+          xml["d"].activelock do
+            xml["d"].locktype  { xml["d"].send lock[:type] }
+            xml["d"].lockscope { xml["d"].send lock[:scope] }
+            xml["d"].locktoken { xml["d"].href lock[:id].token }
+            xml["d"].lockroot  { xml["d"].href root }
+
+            depth = lock[:deep] ? "infinity" : 0
+            xml["d"].depth depth
+
+            owner = Nokogiri::XML.fragment(lock[:owner]).to_xml
+            xml["d"].owner owner
+
+            timeout = lock[:remaining].then { "Second-#{_1}" }
+            xml["d"].timeout timeout
+          end
         end
       end
 
