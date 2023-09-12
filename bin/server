@@ -21,8 +21,7 @@ app = Rack::Builder.new do
   use Rack::TempfileReaper
   use Dav::Middleware::RequestId
 
-  logger = logger.child(system: :request)
-  use Dav::Middleware::HttpLogger, logger:, level: "info"
+  use Dav::Middleware::HttpLogger, logger: logger.child(system: :request), level: "info"
 
   use Rack::ContentLength
   use Rack::Deflater
