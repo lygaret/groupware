@@ -198,7 +198,14 @@ nc = Dav::NewComponent.new                   # will use the container
 nc = Dav::NewComponent.new(connection: mock) # will _not_ use the container
 ```
 
-# Integration Tests
+# Hacking
+
+This repository is super opinionated.
+
+* run `bundle exec rubocop` and make sure it's good
+* run `bundle exec yardoc` and make sure it looks good
+
+## Integration Tests
 
 Currently, we're testing against the [WebDAV.org Litmus Compliance Suite](http://www.webdav.org/neon/litmus/).
 
