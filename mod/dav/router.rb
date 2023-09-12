@@ -64,7 +64,7 @@ module Dav
     private
 
     def find_controller(pathrow) = System::Container["dav.controllers.#{pathrow[:pctype]}"]
-    def root_controller          = System::Container["dav.controllers.collection"]
+    def root_controller          = System::Container["dav.controllers.root"]
 
     def call_forward(controller, methname, path:, ppath:, env:)
       if controller.respond_to? methname
