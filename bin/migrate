@@ -27,7 +27,8 @@ migrations = System::Container.root.join "config/migrations"
 
 Sequel.extension :migration
 
-migrator = Sequel::IntegerMigrator.new(connection, migrations, target: options[:target], use_transactions: true)
+mopts  = { allow_missing_migration_files: true, use_transactions: true }
+migrator = Sequel::IntegerMigrator.new(connection, migrations, target: options[:target], **mopts)
 migrator.run
 
 if options[:dump]
