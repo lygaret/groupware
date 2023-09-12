@@ -43,8 +43,6 @@ jobs:
           cd tmp
           wget http://www.webdav.org/neon/litmus/litmus-0.13.tar.gz
           tar xvf litmus-0.13.tar.gz
-          cd litmus-0.13
-          make
       - name: Run Server
         uses: JarvusInnovations/background-action@v1
         with:
@@ -62,7 +60,7 @@ jobs:
           # Eliminates previosuly output stderr log entries from post-run output
       - name: Run Litmus
         run: |
-          cd tmp/litmus
+          cd tmp/litmus-0.13
           make URL="http://localhost:$PORT" check
 
 
