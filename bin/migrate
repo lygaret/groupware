@@ -27,7 +27,7 @@ migrations = System::Container.root.join "config/migrations"
 
 Sequel.extension :migration
 
-mopts  = { allow_missing_migration_files: true, use_transactions: true }
+mopts    = { allow_missing_migration_files: true, use_transactions: true }
 migrator = Sequel::IntegerMigrator.new(connection, migrations, target: options[:target], **mopts)
 migrator.run
 
@@ -39,14 +39,14 @@ if options[:dump]
     file.puts "-- #{Time.now.httpdate} -- Migration Version #{version}"
     file.puts
 
-    objects = connection[:sqlite_master]
-      .exclude(sql: nil)
-      .select(:sql, :type, :tbl_name, :name)
-      .to_hash_groups(:tbl_name)
+    tables = connection[:sqlite_master]
+               .exclude(sql: nil)
+               .select(:sql, :type, :tbl_name, :name)
+               .to_hash_groups(:tbl_name)
 
-    objects.each do |(_, objects)|
+    tables.each do |(_, objects)|
       objects.each do |object|
-        file.puts object[:sql] + ";"
+        file.puts "#{object[:sql]};"
       end
       file.puts
     end

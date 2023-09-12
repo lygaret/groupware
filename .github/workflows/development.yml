@@ -1,0 +1,51 @@
+name: development
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+permissions:
+  contents: read
+jobs:
+  rubocop:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: 3.2
+        bundler-cache: true
+    - name: Run tests
+      run: bundle exec rubocop
+  litmus-tests:
+    runs-on: ubuntu-latest
+    env:
+      PORT: 5000
+      DATABASE_URL: sqlite://tmp/test.db
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up GCC
+        uses: egor-tensin/setup-gcc@v1
+        with:
+          version: latest
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3.2
+          bundler-cache: true
+      - name: Setup Litmus
+        run: |
+          cd tmp
+          wget http://www.webdav.org/neon/litmus/litmus-0.13.tar.gz
+          tar xvf litmus-0.13.tar.gz
+          cd litmus-0.13
+          ./configure
+      - name: Run Litmus Tests
+        uses: BerniWittmann/background-server-action@v1
+        with:
+          build: bundle exec ./bin/migrate
+          start: bundle exec ./bin/server
+          wait-on: 'http://localhost:${{ env.PORT }}'
+          command: "cd tmp/litmus-0.13 && make URL='http://localhost:${{ env.PORT }}' check"
+

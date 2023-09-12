@@ -1,4 +1,4 @@
--- Tue, 12 Sep 2023 15:19:45 GMT -- Migration Version 60
+-- Tue, 12 Sep 2023 15:38:29 GMT -- Migration Version 60
 
 CREATE TABLE `schema_info` (`version` integer DEFAULT (0) NOT NULL);
 
