@@ -124,6 +124,8 @@ classDiagram
     Resource <--o Lock
 ```
 
+See also: [./tmp/schema-dump.sql](./tmp/schema-dump.sql)
+
 # Method of Operation
 
 `System::Container` is a dependency injection root for the whole system, built
