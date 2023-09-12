@@ -12,16 +12,13 @@ permissions:
 jobs:
   rubocop:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        ruby-version: ['3.2']
     steps:
     - uses: actions/checkout@v3
     - name: Set up Ruby
       uses: ruby/setup-ruby@v1
       with:
-        ruby-version: ${{ matrix.ruby-version }}
-        bundler-cache: true # runs 'bundle install' and caches installed gems automatically
+        ruby-version: 3.2
+        bundler-cache: true
     - name: Run tests
       run: bundle exec rubocop
 
@@ -39,8 +36,8 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: ${{ matrix.ruby-version }}
-          bundler-cache: true # runs 'bundle install' and caches installed gems automatically
+          ruby-version: 3.2
+          bundler-cache: true
       - name: Setup Litmus
         run: |
           cd tmp
@@ -66,6 +63,6 @@ jobs:
       - name: Run Litmus
         run: |
           cd tmp/litmus
-          make URL="http://localhost:$PORT" check 
-          
-        
+          make URL="http://localhost:$PORT" check
+
+
