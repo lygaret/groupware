@@ -15,7 +15,7 @@ module Dav
 
     include System::Import[
       "logger",
-      "repos.paths"
+      "dav.repos.paths"
     ]
 
     # rack application entry-point

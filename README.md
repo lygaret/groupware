@@ -45,7 +45,7 @@ Starts an IRB console, with the system finalized.
 `main#get` is a shortcut for `System::Container.[]`, eg:
 
 ```ruby
-paths = get("repos.paths")
+paths = get("dav.repos.paths")
 paths.at_path("/testpath")
 ```
 
@@ -63,7 +63,7 @@ In these tools, the following SQL functions are available:
 * `escape_url()`
 * `unescape_url()`
 
-# Technical
+# Method of Operation
 
 `System::Container` is a dependency injection root for the whole system, built
 on top of the excellent [dry-system](https://dry-rb.org/gems/dry-system) gem.
@@ -71,8 +71,73 @@ on top of the excellent [dry-system](https://dry-rb.org/gems/dry-system) gem.
 An application starts by calling `System::Container.finalize!`, which auto-registers
 components in the `mod` directory, making them available via the container.
 
-Auto-registered components get their dependencies automatically filled, making the
-resulting object graph pretty straightforward.
+## Providers
+
+The container automatically starts and manages the lifecycle of components in the
+`config/providers` directory, such as the database connection and logger.
+
+These are _not_ auto-registered however; rather providers hook lifecycle events, and
+can do whatever, including registering services.
+
+## Auto-registered components
+
+Files in the `mod` directory can be auto-loaded by requesting them from the container
+by name, which is the path, but with dots, eg. `dav.controllers.collection`.
+
+These components will, by default, _not_ be memoized between invocations, returning a
+new instance each time it's resolved; see `config/system.rb` to customize particular
+components.
+
+## Constructor Auto-injection
+
+A component can `include System::Import["some.component"]`; this will override the
+`.new` and `#initialize` methods to accept `component:`, and pull from the container
+if not present.
+
+# Registered Keyspace
+
+```ruby
+irb(console):001> System::Container.keys
+=> [
+  "settings",         # dry-settings, see `config/providers/settings`
+  "logger",           # ouigai logger, see `config/providers/logger`
+  "db.connection",    # sequel database, see `config/providers/database`
+
+  "dav.repos.paths",  # data access for resources/paths
+  "dav.router",       # rack application * controllers
+  "dav.controllers.collection"
+
+  # TODO:
+  # "dav.controllers.addressbook"
+  # "dav.controllers.calendar"
+]
+```
+
+# Example
+
+```ruby
+# in ./bin/console, #get pulls from the container
+paths  = get("dav.repos.paths") # from mod/repos/paths.rb
+logger = get("logger") # ouigai logger
+
+# then just use them
+res = paths.at_path("/hello")
+logger.info("something", res:)
+```
+
+```ruby
+# in mod/dav/new_component.rb
+class NewComponent
+  include System::Import["db.connection"]
+
+  def do_something
+    connection
+  end
+end
+
+nc = NewComponent.new                   # will use the container
+nc = NewComponent.new(connection: mock) # will _not_ use the container
+```
 
 # Integration Tests
 

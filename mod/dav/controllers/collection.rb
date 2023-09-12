@@ -10,7 +10,7 @@ module Dav
     class Collection < BaseController
 
       include System::Import[
-        "repos.paths",
+        "dav.repos.paths",
         "logger"
       ]
 
