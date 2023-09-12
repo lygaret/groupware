@@ -49,5 +49,5 @@ jobs:
           build: bundle exec ./bin/migrate
           start: bundle exec ./bin/server
           wait-on: 'http://localhost:${{ env.PORT }}'
-          command: cd tmp/litmus-0.13 && make URL="http://localhost:${{ env.PORT }}" check
+          command: "cd tmp/litmus-0.13 && make URL='http://localhost:${{ env.PORT }}' check"
 
