@@ -63,6 +63,63 @@ In these tools, the following SQL functions are available:
 * `escape_url()`
 * `unescape_url()`
 
+# Domain
+
+Not actually, but mostly:
+
+* `paths` stores the tree of pathnames
+  * nodes in the path tree can have `resources`, which are the actual data contents
+  * nodes in the path tree may also have `properties`, which are xml-based kv pairs
+
+* `resources` store the actual data contents of the tree
+  * separate from the tree so that different controllers can store data differently
+  * may have `properties` and `locks`
+  * on creation, automatically creates a handful of properties
+    * `etag`, `content-length`, `creationdate`, etc.
+
+* `locks` may be placed on paths or resources
+  * deep locks affect children recursively
+  * shared locks may be shared, but exclusive may not be
+
+```mermaid
+classDiagram
+    class Path {
+        id: UUID
+        pid: UUID
+        path: String
+    }
+    Path <--o Path : by pid, forms a tree
+
+    class Resource {
+        id: UUID
+        pid: UUID
+        content: Blob
+    }
+
+    class Property {
+        pid: UUID?
+        rid: UUID?
+        xmlns: String
+        xmlel: String
+        content: XmlElement
+    }
+
+    class Lock {
+        id: UUID
+        pid: UUID?
+        rid: UUID?
+        timeout: Integer
+        refreshed_at: Integer
+    }
+
+    Path <--o Property : via owned
+    Path <--o Lock
+
+    Resource o--> Path
+    Resource <--o Property : via owned
+    Resource <--o Lock
+```
+
 # Method of Operation
 
 `System::Container` is a dependency injection root for the whole system, built
@@ -117,7 +174,7 @@ irb(console):001> System::Container.keys
 
 ```ruby
 # in ./bin/console, #get pulls from the container
-paths  = get("dav.repos.paths") # from mod/repos/paths.rb
+paths  = get("dav.repos.paths") # from mod/dav/repos/paths.rb
 logger = get("logger") # ouigai logger
 
 # then just use them
@@ -127,16 +184,18 @@ logger.info("something", res:)
 
 ```ruby
 # in mod/dav/new_component.rb
-class NewComponent
-  include System::Import["db.connection"]
+module Dav
+  class NewComponent
+    include System::Import["db.connection"]
 
-  def do_something
-    connection
+    def do_something
+      connection
+    end
   end
 end
 
-nc = NewComponent.new                   # will use the container
-nc = NewComponent.new(connection: mock) # will _not_ use the container
+nc = Dav::NewComponent.new                   # will use the container
+nc = Dav::NewComponent.new(connection: mock) # will _not_ use the container
 ```
 
 # Integration Tests
