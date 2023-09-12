@@ -1,0 +1,71 @@
+name: Ruby Lints
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  rubocop:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ruby-version: ['3.2']
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: ${{ matrix.ruby-version }}
+        bundler-cache: true # runs 'bundle install' and caches installed gems automatically
+    - name: Run tests
+      run: bundle exec rubocop
+
+  litmus-tests:
+    runs-on: ubuntu-latest
+    env:
+      PORT: 5000
+      DATABASE_URL: tmp/test.db
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up GCC
+        uses: egor-tensin/setup-gcc@v1
+        with:
+          version: latest
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby-version }}
+          bundler-cache: true # runs 'bundle install' and caches installed gems automatically
+      - name: Setup Litmus
+        run: |
+          cd tmp
+          wget http://www.webdav.org/neon/litmus/litmus-0.13.tar.gz
+          tar xvf litmus-0.13.tar.gz
+          cd litmus
+          make
+      - name: Run Server
+        uses: JarvusInnovations/background-action@v1
+        with:
+          run: |
+            bundle exec ./bin/migrate
+            bundle exec ./bin/server
+          wait-on: |
+            http://localhost:${{ env.PORT }}
+          wait-for: 5m
+          tail: true # true = stderr,stdout
+          log-output: stderr,stdout # same as true
+          log-output-if: failure
+          # failure = exit-early or timeout
+          log-output-resume: stderr
+          # Eliminates previosuly output stderr log entries from post-run output
+      - name: Run Litmus
+        run: |
+          cd tmp/litmus
+          make URL="http://localhost:$PORT" check 
+          
+        
