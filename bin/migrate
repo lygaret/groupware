@@ -13,6 +13,10 @@ OptionParser.new do |opts|
   opts.on("-t", "--target INTEGER", Integer, "the target version of the database") do |v|
     options[:target] = v
   end
+
+  opts.on("-d", "--dump PATH", String, "a path to put a schema dump after migration") do |p|
+    options[:dump] = p
+  end
 end.parse!
 
 # because we need specific database setup,
@@ -22,4 +26,28 @@ connection = System::Container["db.connection"]
 migrations = System::Container.root.join "config/migrations"
 
 Sequel.extension :migration
-Sequel::Migrator.run(connection, migrations, target: options[:target])
+
+migrator = Sequel::IntegerMigrator.new(connection, migrations, target: options[:target], use_transactions: true)
+migrator.run
+
+if options[:dump]
+  path = File.expand_path options[:dump]
+  File.open(path, "w") do |file|
+    version = migrator.send(:current_migration_version)
+
+    file.puts "-- #{Time.now.httpdate} -- Migration Version #{version}"
+    file.puts
+
+    objects = connection[:sqlite_master]
+      .exclude(sql: nil)
+      .select(:sql, :type, :tbl_name, :name)
+      .to_hash_groups(:tbl_name)
+
+    objects.each do |(_, objects)|
+      objects.each do |object|
+        file.puts object[:sql] + ";"
+      end
+      file.puts
+    end
+  end
+end
