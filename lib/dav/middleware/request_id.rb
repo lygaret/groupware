@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "utils/base_58"
+require "securerandom"
 
 module Dav
   module Middleware
@@ -12,8 +12,11 @@ module Dav
       end
 
       def call(env)
-        id                      = (env["HTTP_X_REQUEST_ID"] = Utils::Base58.random_base58(8))
-        status, headers, body   = @app.call(env)
+        id  = SecureRandom.urlsafe_base64(8)
+        env = env.merge("HTTP_X_REQUEST_ID" => id)
+
+        status, headers, body = @app.call(env)
+
         headers["x-request-id"] = id
         [status, headers, body]
       end
