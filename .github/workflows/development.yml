@@ -43,7 +43,7 @@ jobs:
           cd tmp
           wget http://www.webdav.org/neon/litmus/litmus-0.13.tar.gz
           tar xvf litmus-0.13.tar.gz
-          cd litmus
+          cd litmus-0.13
           make
       - name: Run Server
         uses: JarvusInnovations/background-action@v1
