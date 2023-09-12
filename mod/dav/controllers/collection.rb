@@ -2,6 +2,7 @@
 
 require "nokogiri"
 
+require "dav/repos/paths"
 require "dav/controllers/base_controller"
 
 module Dav
@@ -475,7 +476,7 @@ module Dav
 
         # can be more than one due to shared locks
         # good if there's any intersection of submitted and current
-        tokens = lids.split(",").map { "urn:uuid:#{_1}?=lock" }
+        tokens = lids.split(",").map { Repos::Paths::LockId.new _1 }.map(&:token)
         tokens.intersect? request.dav_submitted_tokens
       end
 
@@ -504,7 +505,7 @@ module Dav
           clause.predicates.all? do |pred|
             case pred
             when Dav::IfState::TokenPredicate
-              pathlocks = path&.[](:plockids)&.split(",")&.map { "urn:uuid:#{_1}?=lock" }
+              pathlocks = path&.[](:plockids)&.split(",")&.map { Repos::Paths::LockId.new(_1) }&.map(&:token)
               toggle_bool(pathlocks&.include?(pred.token), pred.inv)
 
             when Dav::IfState::EtagPredicate

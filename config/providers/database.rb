@@ -3,6 +3,8 @@
 require "cgi"
 require "securerandom"
 
+require "utils/base_58"
+
 System::Container.register_provider(:database) do
   prepare do
     require "sequel"
@@ -23,7 +25,7 @@ System::Container.register_provider(:database) do
       after_connect:
         proc do |c|
           c.create_function("uuid", 0) do |func|
-            func.result = SecureRandom.uuid
+            func.result = Utils::Base58.random_base58(12)
           end
 
           c.create_function("escape_url", 1) do |func, str|
