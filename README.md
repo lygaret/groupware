@@ -4,9 +4,13 @@ A `*DAV` server, supporting:
 
 - [x] WebDAV against a sqlite db
   - [x] core RFCs (resources, properties, locks)
-  - [ ] ACLs & Users
+  - [ ] errors responses (4918 & CalDAV, but not 2518)
+  - [ ] streaming `GET` responses
+  - [ ] acls & permissioning
 - [ ] CalDAV
 - [ ] CardDAV
+- [ ] Users and Groups
+  - specifically with respect to RFC `current-principal`
 
 # Relevant RFCs
 
