@@ -43,6 +43,8 @@ jobs:
           cd tmp
           wget http://www.webdav.org/neon/litmus/litmus-0.13.tar.gz
           tar xvf litmus-0.13.tar.gz
+          cd litmus-0.13
+          ./configure
       - name: Run Litmus Tests
         uses: BerniWittmann/background-server-action@v1
         with:
