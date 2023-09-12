@@ -43,23 +43,13 @@ jobs:
           cd tmp
           wget http://www.webdav.org/neon/litmus/litmus-0.13.tar.gz
           tar xvf litmus-0.13.tar.gz
-      - name: Run Server
-        uses: JarvusInnovations/background-action@v1
+      - name: Run Litmus Tests
+        uses: BerniWittmann/background-server-action@v1
         with:
-          run: |
-            bundle exec ./bin/migrate && bundle exec ./bin/server
-          wait-on: |
-            http://localhost:${{ env.PORT }}
-          wait-for: 5m
-          tail: true # true = stderr,stdout
-          log-output: stderr,stdout # same as true
-          log-output-if: failure
-          # failure = exit-early or timeout
-          log-output-resume: stderr
-          # Eliminates previosuly output stderr log entries from post-run output
-      - name: Run Litmus
-        run: |
-          cd tmp/litmus-0.13
-          make URL="http://localhost:$PORT" check
-
+          build: bundle exec ./bin/migrate
+          start: bundle exec ./bin/server
+          wait-on: 'http://localhost:${{ env.PORT }}'
+          command: |
+            cd tmp/litmus-0.13
+            make URL="http://localhost:$PORT" check
 
