@@ -28,7 +28,7 @@ jobs:
       PORT: 5000
       DATABASE_URL: tmp/test.db
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Set up GCC
         uses: egor-tensin/setup-gcc@v1
         with:
@@ -47,8 +47,7 @@ jobs:
         uses: JarvusInnovations/background-action@v1
         with:
           run: |
-            bundle exec ./bin/migrate
-            bundle exec ./bin/server
+            bundle exec ./bin/migrate && bundle exec ./bin/server
           wait-on: |
             http://localhost:${{ env.PORT }}
           wait-for: 5m
