@@ -211,6 +211,8 @@ This repository is super opinionated.
 * run `bundle exec rubocop` and make sure it's good
 * run `bundle exec yardoc` and make sure it looks good
 
+See [./JOURNAL.md](./JOURNAL.md) for current direction and work.
+
 ## Integration Tests
 
 Currently, we're testing against the [WebDAV.org Litmus Compliance Suite](http://www.webdav.org/neon/litmus/).

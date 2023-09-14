@@ -10,5 +10,4 @@ mod/**/*.rb
 spec/support/**/*.rb
 -
 README.md
-DESIGN.md
-CHANGELOG.md
+JOURNAL.md
