@@ -3,13 +3,13 @@
 module Dav
 
   # Represents a path, and gives us easy access to the name and dirname
-  Pathname = Data.define(:basename, :dirname) do
+  Pathname = Data.define(:dirname, :basename) do
     def self.parse(path)
       parts    = path.split("/")
       basename = parts.pop
       dirname  = parts.join("/")
 
-      new(basename, dirname)
+      new(dirname, basename)
     end
 
     def to_s    = [dirname, basename].join("/")
