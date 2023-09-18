@@ -28,10 +28,12 @@ module Dav
         def token = "urn:x-groupware:#{lid}?=lock"
       end
 
-      # simple iterator to return just the contents of a resource
+      # simple response body wrapper to return just the contents of a resource
+      # rack response bodies must respond to #each or #call
+      #
       # TODO: support range reading
       # TODO: support chunked reading/streaming
-      ResourceContentIterator = Data.define(:resources, :rid) do
+      ResourceContentBody = Data.define(:resources, :rid) do
         def each
           yield resources.where(id: rid).get(:content)&.to_s
         end
@@ -45,11 +47,14 @@ module Dav
 
         paths
           .join(filtered_paths, { id: :id }, table_alias: :extra)
-          .select_append(:extra[:fullpath])
-          .select_append(:extra[:pctype])
-          .select_append(:extra[:lockids])
-          .select_append(:extra[:plockids])
-          .select_append(:extra[:lockdeeps])
+          .select_all(:paths)
+          .select_append(
+            :extra[:fullpath],
+            :extra[:pctype],
+            :extra[:lockids],
+            :extra[:plockids],
+            :extra[:lockdeeps]
+          )
           .first
       end
 
@@ -100,7 +105,7 @@ module Dav
       end
 
       # @return [#each] an iterator over resource content
-      def resource_reader(rid:) = ResourceContentIterator.new(resources, rid)
+      def resource_reader(rid:) = ResourceContentBody.new(resources, rid)
 
       # clears the resource under the given path
       # @param pid [UUID] the id of the path node to clear
@@ -187,9 +192,10 @@ module Dav
         scope = scopes.reduce { |memo, s| memo.union(s) }
 
         # and then group by fullpath
-        scope.each_with_object({}) do |row, results|
+        # even if the property isn't present, add the path to the result set
+        scope.each_with_object(Hash.new) do |row, results|
           results[row[:fullpath]] ||= []
-          next if row[:pid].nil? && row[:rid].nil? # nil object from left outer join
+          next if row[:pid].nil? && row[:rid].nil? # nil property from left outer join
 
           results[row[:fullpath]] << row
         end
@@ -296,7 +302,7 @@ module Dav
         now = Time.now.utc.to_i
         locks
           .returning(:id)
-          .insert(id: Sequel.function(:uuid), pid:, deep:, type:, scope:, owner:, timeout:, refreshed_at: now, created_at: now)
+          .insert(id: SQL.uuid, pid:, deep:, type:, scope:, owner:, timeout:, refreshed_at: now, created_at: now)
           .then { LockId.new(_1.first[:id]) }
       end
 

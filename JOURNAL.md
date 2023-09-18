@@ -1,3 +1,31 @@
+# 2023-9-18 Mon
+
+Took a few days off, getting back into the code review feedback I got from Super:
+
+* general typos
+  * [x] fix select list for `at_path`
+  * [x] make clear `resource_reader` is not an iterator, but a rack body wrapper
+  * split `properties_at` for `pid` and `rid` independence
+  * ~~`each_with_object` in `properties_at` might be cleaner with a defaulted hash~~
+    * turns out that this doesn't work; we're relying on the fact that we ceate the row
+      even if the pid/rid of the property is nil; otherwise we just don't report the path
+  * [x] `SQL.uuid` in grant lock
+  * `lock_grant` is hitting the repo's connection directly
+
+* router
+  * seems long; is there a better way to break it up?
+  * in fact, pattern matching on the Pathname (dirname, basename) tuple might make things much clearer
+
+* paths repo
+  * length; is there value in breaking out resources/properties as their own repos?
+  * use more objects, `Data.define`, and fewer magic symbol hashes
+    * personally, I think switching to sequel Model objects is too heavyweight (I don't want `Paths.find()` style methods),
+      but there's got to be a way to define a hash wrapper that's consistently returned by the repos
+
+* collection controller
+  * actually parse the XML, rather than doing all the path searches inline - it's pretty confusing as it stands
+    * something to note; we're going to have to figure out how to handle arbitrary `REPORT` bodies, so this might be big
+
 # 2023-9-14 Thu
 
 Now that the litmus tests are all passing, I need to come up with a priority list of what needs to happen next.
