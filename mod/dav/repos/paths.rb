@@ -194,7 +194,7 @@ module Dav
 
         # and then group by fullpath
         # even if the property isn't present, add the path to the result set
-        scope.each_with_object(Hash.new) do |row, results|
+        scope.each_with_object({}) do |row, results|
           results[row[:fullpath]] ||= []
           next if row[:pid].nil? && row[:rid].nil? # nil property from left outer join
 
