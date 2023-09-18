@@ -5,12 +5,14 @@ Took a few days off, getting back into the code review feedback I got from Super
 * general typos
   * [x] fix select list for `at_path`
   * [x] make clear `resource_reader` is not an iterator, but a rack body wrapper
-  * split `properties_at` for `pid` and `rid` independence
-  * ~~`each_with_object` in `properties_at` might be cleaner with a defaulted hash~~
+  * [ ] split `properties_at` for `pid` and `rid` independence
+  * [-] `each_with_object` in `properties_at` might be cleaner with a defaulted hash
     * turns out that this doesn't work; we're relying on the fact that we ceate the row
       even if the pid/rid of the property is nil; otherwise we just don't report the path
   * [x] `SQL.uuid` in grant lock
-  * `lock_grant` is hitting the repo's connection directly
+  * [-] `lock_grant` is hitting the repo's connection directly
+    * I want to tackle this with the paths repo object change; fetching locks by id isn't
+      really what that usage was about, more about checking tht the lock isn't shared;
 
 * router
   * seems long; is there a better way to break it up?
