@@ -42,9 +42,10 @@ module Dav
       # @param fullpath [String] the full path to find (eg. "/some/full/path")
       # @return [Hash] the path row at the given full path
       def at_path(fullpath)
-        fullpath       = fullpath.chomp("/") # normalize for collections
-        filtered_paths = connection[:paths_extra].where(fullpath:)
+        fullpath = fullpath.chomp("/") # normalize for collections
+        return nil if fullpath == ""
 
+        filtered_paths = connection[:paths_extra].where(fullpath:)
         paths
           .join(filtered_paths, { id: :id }, table_alias: :extra)
           .select_all(:paths)

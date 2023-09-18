@@ -25,37 +25,30 @@ module Dav
       methname = env[Rack::REQUEST_METHOD].downcase.to_sym
       pathname = env["dav.pathname"] = Dav::Pathname.parse pathinfo
 
-      # what I would give for pervasive monad syntax and Maybe...
+      # look up the path (root will be nil)
+      pathrow = paths.at_path(pathname.to_s)
 
-      if pathname.to_s == ""
-        # quick bypass for the root
-        controller = root_controller
-        call_forward(controller, methname, path: nil, ppath: nil, env:)
-      else
-        # otherwise; look up the path
-        pathrow = paths.at_path(pathname.to_s)
-        unless pathrow.nil?
-          # if the path exists, use it's inherited controller to handle the method
-          controller = find_controller(pathrow)
-          call_forward(controller, methname, path: pathrow, ppath: nil, env:)
-        else
-          if pathname.dirname == ""
-            # otherwise; if the parent is the root, use that
-            controller = root_controller
-            call_forward(controller, methname, path: nil, ppath: nil, env:)
-          else
-            # otherwise; look up the parent
-            parentrow = paths.at_path(pathname.dirname)
-            unless parentrow.nil?
-              controller = find_controller(parentrow)
-              call_forward(controller, methname, path: nil, ppath: parentrow, env:)
-            else
-              # otherwise it's "missing intermediates", and is likely a 409
-              respond methname, "not found", status: 409
-            end
-          end
-        end
+      # if the path exists, use it's inherited controller to handle the method
+      unless pathrow.nil?
+        controller = find_controller(pathrow)
+        return call_forward(controller, methname, path: pathrow, ppath: nil, env:)
       end
+
+      # otherwise; look up the parent and use that controller
+      parentrow = paths.at_path(pathname.dirname)
+      unless parentrow.nil?
+        controller = find_controller(parentrow)
+        return call_forward(controller, methname, path: nil, ppath: parentrow, env:)
+      end
+
+      # missing parent might be root, check that
+      if pathname.dirname == ""
+        controller = root_controller
+        return call_forward(controller, methname, path: nil, ppath: nil, env:)
+      end
+
+      # otherwise, it's "missing intermediates"
+      respond(methname, "not found", status: 409)
     rescue Errors::HaltRequest => e
       body = methname == :head ? "" : e.message
       respond methname, body, status: e.status
