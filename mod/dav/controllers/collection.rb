@@ -12,6 +12,7 @@ module Dav
 
       include System::Import[
         "dav.repos.paths",
+        "dav.repos.resources",
         "logger"
       ]
 
@@ -51,7 +52,7 @@ module Dav
         invalid! "not found", status: 404 if path.nil?
         complete! 204 if path.collection?
 
-        resource = paths.resource_at(pid: path.id)
+        resource = resources.at_path(pid: path.id)
         complete! 204 if resource.nil? # no content at path!
 
         # resource exists, merge into response
@@ -59,7 +60,7 @@ module Dav
 
         response.headers.merge! GET_DEFAULT_HEADERS
         response.headers.merge! resource.http_headers
-        response.body = paths.resource_reader(rid: resource.id)
+        response.body = resources.content_for(rid: resource.id)
         complete 200
       end
 
@@ -225,7 +226,7 @@ module Dav
           etag     = request.md5_body.hexdigest
 
           # insert the resource at that path
-          paths.put_resource(pid:, display:, type:, lang:, length:, content:, etag:, creating: true)
+          resources.upsert_at(pid:, display:, type:, lang:, length:, content:, etag:, creating: true)
         end
 
         complete 201
@@ -244,7 +245,7 @@ module Dav
         content = request.md5_body.read(length)
         etag    = request.md5_body.hexdigest
 
-        paths.put_resource(pid:, display:, type:, lang:, length:, content:, etag:, creating: false)
+        resources.upsert_at(pid:, display:, type:, lang:, length:, content:, etag:, creating: false)
         complete 204
       end
 
