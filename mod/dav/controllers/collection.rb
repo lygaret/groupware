@@ -23,7 +23,12 @@ module Dav
         OPTIONS HEAD GET PUT DELETE
         MKCOL COPY MOVE LOCK UNLOCK
         PROPFIND PROPPATCH
-      ].join(",").freeze
+      ].freeze
+
+      # TODO: cors? anything else?
+      OPTIONS_DEFAULT_HEADERS = {
+        "Allow" => OPTIONS_SUPPORTED_METHODS.join(",").freeze
+      }.freeze
 
       # TODO: support range header
       GET_DEFAULT_HEADERS = {
@@ -31,11 +36,9 @@ module Dav
       }.freeze
 
       # OPTIONS http method
-      # - respond with allowed methods
-      # - TODO: cors? what else?
       def options(*)
-        response["Allow"] = OPTIONS_SUPPORTED_METHODS
-        complete 204
+        response.headers.merge!(OPTIONS_DEFAULT_HEADERS)
+        complete 202
       end
 
       # HEAD http method
@@ -46,9 +49,9 @@ module Dav
       # returns the resource at a given path
       def get(path:, ppath:, include_body: true)
         invalid! "not found", status: 404 if path.nil?
-        complete! 204 if path[:ctype] # no content for a collection
+        complete! 204 if path.collection?
 
-        resource = paths.resource_at(pid: path[:id])
+        resource = paths.resource_at(pid: path.id)
         complete! 204 if resource.nil? # no content at path!
 
         # resource exists, merge into response
@@ -86,7 +89,7 @@ module Dav
         validate_lock!(path: ppath) unless ppath.nil?
 
         paths.transaction do
-          pid   = ppath&.[](:id)
+          pid   = ppath&.id
           path  = request.path.basename
           props = [{ xmlel: "resourcetype", content: "<collection/>" }]
 
@@ -113,7 +116,7 @@ module Dav
         invalid! "not found", status: 404 if path.nil?
         validate_lock!(path:)
 
-        paths.delete(id: path[:id])
+        paths.delete(id: path.id)
         complete 204 # no content
       end
 
@@ -173,7 +176,7 @@ module Dav
 
         paths.transaction do
           update_el.element_children.each do |child_el|
-            pid   = path[:id]
+            pid   = path.id
             props = child_el.css("> d|prop > *", DAV_NSDECL)
 
             case child_el
@@ -211,13 +214,11 @@ module Dav
 
       # insert a resource at the parent path
       def put_insert(ppath:)
-        invalid! "intermediate path not found", status: 409 if ppath.nil?
-        invalid! "parent must be a collection", status: 409 if ppath[:ctype].nil?
-
+        invalid! "parent must be a collection", status: 409 unless ppath&.collection?
         validate_lock!(path: ppath)
 
         paths.transaction do
-          pid  = ppath[:id]
+          pid  = ppath.id
           path = request.path.basename
 
           # the new path is the parent of the resource
@@ -240,11 +241,10 @@ module Dav
       # update a resource at the given path
       def put_update(path:)
         invalid "not found", status: 404 if path.nil?
-
         validate_lock!(path:)
 
-        pid     = path[:id]
-        display = CGI.unescape(path[:path])
+        pid     = path.id
+        display = CGI.unescape(path.path)
         type    = request.dav_content_type
         length  = request.dav_content_length
         lang    = request.get_header("content-language")
@@ -263,23 +263,22 @@ module Dav
           dest  = request.dav_destination
           pdest = paths.at_path(dest.dirname)
 
-          invalid! "destination root must exist", status: 409           if pdest.nil?
-          invalid! "destination root must be a collection", status: 409 if pdest[:ctype].nil?
+          invalid! "destination root must be a collection", status: 409 unless pdest&.collection?
 
           extant = paths.at_path(dest.to_s)
           unless extant.nil?
             invalid! "destination must not already exist", status: 412 unless request.dav_overwrite?
 
             validate_lock!(path: extant)
-            paths.delete(id: extant[:id])
+            paths.delete(id: extant.id)
           end
 
           validate_lock!(path: pdest)
           if move
             validate_lock!(path:)
-            paths.move_tree(id: path[:id], dpid: pdest[:id], dpath: dest.basename)
+            paths.move_tree(id: path.id, dpid: pdest.id, dpath: dest.basename)
           else
-            paths.clone_tree(id: path[:id], dpid: pdest[:id], dpath: dest.basename)
+            paths.clone_tree(id: path.id, dpid: pdest.id, dpath: dest.basename)
           end
 
           status = extant.nil? ? 201 : 204
@@ -290,7 +289,7 @@ module Dav
       # return all* properties from the given path
       # if shallow, only return the names
       def propfind_allprop(path:, depth:, shallow:)
-        properties = paths.properties_at(pid: path[:id], depth:)
+        properties = paths.properties_at(pid: path.id, depth:)
         builder    = Nokogiri::XML::Builder.new do |xml|
           xml["d"].multistatus("xmlns:d" => "DAV:") do
             properties.each do |fullpath, props|
@@ -329,7 +328,7 @@ module Dav
         end
 
         # we can additionally use the set of expected properties to filter the db query
-        properties = paths.properties_at(pid: path[:id], depth:, filters: expected)
+        properties = paths.properties_at(pid: path.id, depth:, filters: expected)
 
         # iterate through properties while building the xml
         builder = Nokogiri::XML::Builder.new do |xml|
@@ -384,33 +383,26 @@ module Dav
         type     = lockinfo.at_css("> d|locktype", DAV_NSDECL).element_children.first&.name
         owner    = lockinfo.at_css("> d|owner", DAV_NSDECL)&.children&.to_xml
 
-        pid      = path&.[](:id)
+        pid      = path&.id
         deep     = request.dav_depth == :infinity
         timeout  = request.dav_timeout
 
-        invalid! "lockscope must be present" if scope.nil?
-        invalid! "lockscope must be exclusive/shared" unless DAV_LOCKSCOPES.include? scope
+        # basic input validation
         invalid! "locktype must be supported" unless DAV_LOCKTYPES.include? type
+        invalid! "lockscope must be exclusive/shared" unless DAV_LOCKSCOPES.include? scope
 
-        extantids = path&.[](:plockids)&.split(",")
-        extants   = extantids && paths.send(:locks_live).where(id: extantids).all
+        # lock can create an empty, preemptively locked path, but intermediates must exist
+        invalid! "intermediate paths must exist!", status: 409 if pid.nil? && ppath.nil?
 
-        if extants
-          # can't ask for exclusive over any extant lock
-          invalid! "already locked!", status: 423 if scope == "exclusive" && !extants.empty?
-
-          # can't ask for shared over any exclusive
-          invalid! "already locked!", status: 423 if extants.any? { _1[:scope] == "exclusive" }
-        end
+        # lock scope must be compatible with any extant locks
+        invalid! "already locked, lockscope", status: 423 unless paths.lock_allowed?(lids: path&.plockids, scope:)
 
         status = 200
         token  = paths.transaction do
           # lock puts an empty resource to unknown paths, preemptively locked
           if pid.nil?
-            invalid! "intermediate paths must exist!", status: 409 if ppath.nil?
-
             status = 201
-            pid    = paths.insert(pid: ppath[:id], path: request.path.basename)
+            pid    = paths.insert(pid: ppath.id, path: request.path.basename)
           end
 
           logger.info("granting lock", owner:, scope:, type:, timeout:)
@@ -436,7 +428,7 @@ module Dav
       # refresh the lock on a path
       def lock_refresh(path:, ppath:)
         invalid! "not found!", status: 404 unless path
-        invalid! "cant refresh an unlocked lock", status: 412 unless path[:plockids]
+        invalid! "cant refresh an unlocked lock", status: 412 unless path.plockids
 
         validate_lock!(path:)
 
@@ -471,13 +463,11 @@ module Dav
       # take a current path as context, and verify that the submitted request
       # has presented the correct lock token to be able to use the lock.
       def check_lock(path:, direct: false)
-        lids = path&.[](direct ? :lockids : :plockids)
+        lids = direct ? path&.lockids : path&.plockids
         return true unless lids
 
-        # can be more than one due to shared locks
         # good if there's any intersection of submitted and current
-        tokens = lids.split(",").map { Repos::Paths::LockId.new _1 }.map(&:token)
-        tokens.intersect? request.dav_submitted_tokens
+        request.dav_submitted_tokens.intersect? lids.map(&:token)
       end
 
       # validate the ifstate struct, using the current path as context for untagged clauses
@@ -505,11 +495,11 @@ module Dav
           clause.predicates.all? do |pred|
             case pred
             when Dav::IfState::TokenPredicate
-              pathlocks = path&.[](:plockids)&.split(",")&.map { Repos::Paths::LockId.new(_1) }&.map(&:token)
+              pathlocks = path&.plockids&.map(&:token)
               toggle_bool(pathlocks&.include?(pred.token), pred.inv)
 
             when Dav::IfState::EtagPredicate
-              property = path && paths.property_at(pid: path[:id], xmlel: "getetag")
+              property = path && paths.property_at(pid: path.id, xmlel: "getetag")
               toggle_bool(property && (pred.etag == property[:content].to_s), pred.inv)
             end
           end

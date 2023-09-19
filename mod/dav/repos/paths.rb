@@ -16,6 +16,25 @@ module Dav
         "logger"
       ]
 
+      # methods injected into result hashes for the paths table
+      module PathMethods
+
+        def id          = self[:id]
+        def path        = self[:path]
+
+        def lockids     = self[:lockids]&.split(",")&.map { LockId.new _1 }
+        def plockids    = self[:plockids]&.split(",")&.map { LockId.new _1 }
+
+        def collection?    = !self[:ctype].nil?
+        def controller_key = "dav.controllers.#{self[:pctype]}"
+
+        private
+
+        # hash indexing is made private so as to force the use of getters
+        def [](...) = super # rubocop:disable Lint/UselessMethodDefinition
+
+      end
+
       # data wrapper for lock ids, which can parse and generate tokens
       LockId = Data.define(:lid) do
         def self.from_token(token)
@@ -23,6 +42,10 @@ module Dav
 
           match = token.match(/urn:x-groupware:(?<lid>[^?]+)\?=lock/i)
           match && new(match[:lid])
+        end
+
+        def self.from_lid(lid)
+          lid.is_a?(LockId) ? lid : new(lid)
         end
 
         def token = "urn:x-groupware:#{lid}?=lock"
@@ -57,6 +80,9 @@ module Dav
             :extra[:lockdeeps]
           )
           .first
+          .tap do |v|
+            v.singleton_class.include PathMethods
+          end
       end
 
       # insert a new path node
@@ -324,6 +350,26 @@ module Dav
         return nil if info.nil?
 
         info.merge(id:)
+      end
+
+      # @param extant [Array<LockId>] the lockids to check
+      # @param scope ["exclusive", "shared"] the scope of the new lock
+      # @return [bool] whether or not the given extant locks preclude a new lock with the given scope
+      def lock_allowed?(lids:, scope:)
+        return true if lids.nil? || lids.empty?
+
+        # pull the actual locks by id
+        extantids = lids.map { LockId.from_lid _1 }.map(&:lid)
+        extants   = locks_live.where(id: extantids).select(:scope).all
+
+        # no extant live locks, no big deal
+        return true if extants.empty?
+
+        # asking for an exclusive lock fails if there are other locks
+        return false if scope == "exclusive"
+
+        # asking for a shared lock fails if any of the extant locks are exclusive
+        extants.none? { _1[:scope] == "exclusive" }
       end
 
       # remove the lock for the given token

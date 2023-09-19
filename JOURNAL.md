@@ -10,7 +10,7 @@ Took a few days off, getting back into the code review feedback I got from Super
     * turns out that this doesn't work; we're relying on the fact that we ceate the row
       even if the pid/rid of the property is nil; otherwise we just don't report the path
   * [x] `SQL.uuid` in grant lock
-  * [ ] ~~`lock_grant` is hitting the repo's connection directly~~
+  * [x] ~~`lock_grant` is hitting the repo's connection directly~~
     * I want to tackle this with the paths repo object change; fetching locks by id isn't
       really what that usage was about, more about checking tht the lock isn't shared;
 
@@ -23,6 +23,7 @@ Took a few days off, getting back into the code review feedback I got from Super
   * use more objects, `Data.define`, and fewer magic symbol hashes
     * personally, I think switching to sequel Model objects is too heavyweight (I don't want `Paths.find()` style methods),
       but there's got to be a way to define a hash wrapper that's consistently returned by the repos
+    * switched to using a singleton class extension for result hashes, and it works really well
 
 * collection controller
   * actually parse the XML, rather than doing all the path searches inline - it's pretty confusing as it stands
@@ -44,6 +45,9 @@ getting to full compliance will be hard; it looks like the outside world has pre
 - lock discovery in propfind
 
 - [ ] test suite, section by section from the RFCs?
+
+Turns out that apple publishes a big caldav/carddav test suite!
+https://www.calendarserver.org/CalDAVTester.html
 
 ### principals
 
