@@ -62,7 +62,10 @@ module Dav
     def call_forward(controller, methname, path:, ppath:, env:)
       if controller.respond_to? methname
         catch(:complete) do
-          controller.with_env(env).send(methname, path:, ppath:)
+          status, headers, body = controller.with_env(env).send(methname, path:, ppath:)
+
+          # post-process with respond, so we get HEAD handling
+          respond(methname, body, headers:, status:)
         end
       else
         respond(methname, "method not supported", status: 405)
@@ -70,9 +73,12 @@ module Dav
     end
 
     def respond(methname, body, headers: {}, status: 200)
-      body = ""     if methname == :head
-      body = [body] unless body.respond_to? :each
+      if methname == :head
+        headers.delete "Content-Length"
+        body = []
+      end
 
+      body = [body] unless body.respond_to? :each
       [status, headers, body]
     end
 

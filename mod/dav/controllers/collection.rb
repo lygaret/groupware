@@ -43,11 +43,11 @@ module Dav
 
       # HEAD http method
       # returns the headers for a resource at a given path, but includes no body
-      def head(path:, ppath:) = get(path:, ppath:, include_body: false)
+      def head(path:, ppath:) = get(path:, ppath:)
 
       # GET http method
       # returns the resource at a given path
-      def get(path:, ppath:, include_body: true)
+      def get(path:, ppath:)
         invalid! "not found", status: 404 if path.nil?
         complete! 204 if path.collection?
 
@@ -55,18 +55,11 @@ module Dav
         complete! 204 if resource.nil? # no content at path!
 
         # resource exists, merge into response
+        # lazy reader will be discarded by the router for HEAD requests
+
         response.headers.merge! GET_DEFAULT_HEADERS
-        response.headers.merge!(
-          "Content-Type" => resource[:type],
-          "ETag" => resource[:etag],
-          "Last-Modified" => Time.at(resource[:updated_at] || resource[:created_at]).httpdate
-        )
-
-        if include_body
-          response.body = paths.resource_reader(rid: resource[:id])
-          response.headers.merge!("Content-Length" => resource[:length].to_s)
-        end
-
+        response.headers.merge! resource.http_headers
+        response.body = paths.resource_reader(rid: resource.id)
         complete 200
       end
 

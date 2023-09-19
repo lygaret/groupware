@@ -62,6 +62,31 @@ module Dav
         end
       end
 
+      # methods injected into the results hash for the resources table
+      module ResourceMethods
+
+        def id   = self[:id]
+        def pid  = self[:pid]
+
+        def http_headers
+          modtime = self[:updated_at] || resource[:created_at]
+          modtime = Time.at(modtime).httpdate
+
+          {
+            "Content-Type" => self[:type],
+            "Content-Length" => self[:length].to_s,
+            "Last-Modified" => modtime,
+            "ETag" => self[:etag]
+          }
+        end
+
+        private
+
+        # hash indexing is made private so as to force the use of getters
+        def [](...) = super # rubocop:disable Lint/UselessMethodDefinition
+
+      end
+
       # @param fullpath [String] the full path to find (eg. "/some/full/path")
       # @return [Hash] the path row at the given full path
       def at_path(fullpath)
@@ -127,8 +152,12 @@ module Dav
       # @param pid [UUID] the id of the path node to search
       # @return [Hash] the resource row at the given path id, (without content)
       def resource_at(pid:)
-        cols = resources.columns.reject { _1 == :content }
-        resources.where(pid:).select(*cols).first
+        cols  = resources.columns.reject { _1 == :content }
+        scope = resources.where(pid:).select(*cols)
+
+        scope.first.tap do |v|
+          v.singleton_class.include ResourceMethods
+        end
       end
 
       # @return [#each] an iterator over resource content
