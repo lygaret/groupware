@@ -13,6 +13,7 @@ module Dav
       include System::Import[
         "dav.repos.paths",
         "dav.repos.resources",
+        "dav.repos.properties",
         "logger"
       ]
 
@@ -88,7 +89,7 @@ module Dav
           props = [{ xmlel: "resourcetype", content: "<collection/>" }]
 
           pid = paths.insert(pid:, path:, ctype: "collection")
-          paths.set_properties(pid:, props:, user: false)
+          properties.set_properties(pid:, props:, user: false)
         end
 
         complete 201 # created
@@ -175,9 +176,9 @@ module Dav
 
             case child_el
             in { name: "set", namespace: { href: "DAV:" }}
-              paths.set_xml_properties(pid:, user: true, props:)
+              properties.set_xml_properties(pid:, user: true, props:)
             in {name: "remove", namespace: { href: "DAV:" }}
-              paths.remove_xml_properties(pid:, user: true, props:)
+              properties.remove_xml_properties(pid:, user: true, props:)
             else
               # bad request, not sure what we're doing
               invalid! "expected only <set> and <remove>!", status: 400
@@ -283,10 +284,10 @@ module Dav
       # return all* properties from the given path
       # if shallow, only return the names
       def propfind_allprop(path:, depth:, shallow:)
-        properties = paths.properties_at(pid: path.id, depth:)
-        builder    = Nokogiri::XML::Builder.new do |xml|
+        pathprops = properties.at_path(pid: path.id, depth:)
+        builder   = Nokogiri::XML::Builder.new do |xml|
           xml["d"].multistatus("xmlns:d" => "DAV:") do
-            properties.each do |fullpath, props|
+            pathprops.each do |fullpath, props|
               xml["d"].response do
                 xml["d"].href fullpath
                 render_propstat(xml:, status: "200 OK", props:) do |row|
@@ -322,12 +323,12 @@ module Dav
         end
 
         # we can additionally use the set of expected properties to filter the db query
-        properties = paths.properties_at(pid: path.id, depth:, filters: expected)
+        pathprops = properties.at_path(pid: path.id, depth:, filters: expected)
 
         # iterate through properties while building the xml
         builder = Nokogiri::XML::Builder.new do |xml|
           xml["d"].multistatus("xmlns:d" => "DAV:") do
-            properties.each do |fullpath, props|
+            pathprops.each do |fullpath, props|
               missing = expected.dup # track missing items _per path_
 
               xml["d"].response do
@@ -493,7 +494,7 @@ module Dav
               toggle_bool(pathlocks&.include?(pred.token), pred.inv)
 
             when Dav::IfState::EtagPredicate
-              property = path && paths.property_at(pid: path.id, xmlel: "getetag")
+              property = path && properties.find_at_path(pid: path.id, xmlel: "getetag")
               toggle_bool(property && (pred.etag == property[:content].to_s), pred.inv)
             end
           end

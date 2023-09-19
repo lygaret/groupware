@@ -13,7 +13,7 @@ module Dav
 
       include System::Import[
         "db.connection",
-        "dav.repos.paths",
+        "dav.repos.properties",
         "logger"
       ]
 
@@ -108,7 +108,7 @@ module Dav
           .insert(**values)
           .then do
             rid = _1.first[:id]
-            paths.set_properties(rid:, user: false, props:)
+            properties.set_properties(rid:, user: false, props:)
           end
       end
 
