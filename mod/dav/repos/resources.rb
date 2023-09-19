@@ -106,8 +106,8 @@ module Dav
           .returning(:id)
           .insert_conflict(:replace)
           .insert(**values)
-          .then do
-            rid = _1.first[:id]
+          .then do |res|
+            rid = res.first[:id]
             properties.set_properties(rid:, user: false, props:)
           end
       end
