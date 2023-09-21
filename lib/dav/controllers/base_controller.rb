@@ -4,6 +4,7 @@ require "rack"
 
 require "dav/errors"
 require "dav/request"
+require "dav/response"
 
 module Dav
   module Controllers
@@ -16,7 +17,7 @@ module Dav
       # @param {Hash} env the rack environment
       def with_env(env)
         @request  = Dav::Request.new(env)
-        @response = Rack::Response.new
+        @response = Dav::Response.new
 
         self
       end
