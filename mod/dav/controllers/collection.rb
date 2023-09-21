@@ -43,8 +43,8 @@ module Dav
         complete 202
       end
 
-      # HEAD http method
-      # returns the headers for a resource at a given path, but includes no body
+      # HEAD http method is just a get, but the router will discard the body
+      # @see Router#respond
       def head(path:, ppath:) = get(path:, ppath:)
 
       # GET http method
@@ -57,10 +57,10 @@ module Dav
         complete! 204 if resource.nil? # no content at path!
 
         # resource exists, merge into response
-        # lazy reader will be discarded by the router for HEAD requests
-
         response.headers.merge! GET_DEFAULT_HEADERS
         response.headers.merge! resource.http_headers
+
+        # lazy reader will be discarded by the router for HEAD requests
         response.body = resources.content_for(rid: resource.id)
         complete 200
       end
@@ -75,10 +75,9 @@ module Dav
         invalid! "path already exists", status: 405 unless path.nil?
 
         # intermediate collections must already exist
-        # but at the root, there's no parent
-        has_inter   = !ppath.nil?
-        has_inter ||= request.path.dirname == ""
-        invalid! "intermediate paths must exist", status: 409 unless has_inter
+        # but at the root, there's no parent, so ppath may still be nil below!
+        missing_inter = request.path.dirname != "" && ppath.nil?
+        invalid! "intermediate paths must exist", status: 409 if missing_inter
 
         # root cant' be locked
         validate_lock!(path: ppath) unless ppath.nil?
@@ -117,15 +116,11 @@ module Dav
 
       # COPY http (webdav) method
       # clones the subtree at the given path to a different parent
-      def copy(path:, ppath:)
-        copy_move path:, ppath:, move: false
-      end
+      def copy(path:, ppath:) = copy_move path:, ppath:, move: false
 
       # MOVE http (webdav) method
       # moves the subtree at the given path to a different parent
-      def move(path:, ppath:)
-        copy_move path:, ppath:, move: true
-      end
+      def move(path:, ppath:) = copy_move path:, ppath:, move: true
 
       # PROPFIND http (webdav) method
       # returns properties set on the given resource, possibly recursively
