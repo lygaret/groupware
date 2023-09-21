@@ -135,12 +135,12 @@ module Dav
         # handle the command from the body
         case propfind_command(request.xml_body)
         in :allprop
-          propfind_props(path:, depth:)
+          propfind_response_for(path:, depth:)
         in :propname
-          propfind_props(path:, depth:, shallow: true)
+          propfind_response_for(path:, depth:, shallow: true)
         in [:prop, prop]
           filters = prop.element_children.map { propfind_to_filter _1 }
-          propfind_props(path:, depth:, filters:)
+          propfind_response_for(path:, depth:, filters:)
         else
           invalid! "invalid xml!", status: 400
         end
@@ -258,6 +258,8 @@ module Dav
         end
       end
 
+      # --- properties
+
       # given an xml doc from a propfind, parse out the command to run
       # @param doc [Nokogiri::XML::Document] the request xml body to parse
       # @return [Array<[Symbol, XMLElement>]] a pair of the command, and the args to the command handler
@@ -279,22 +281,22 @@ module Dav
         invalid! "expected one of prop, propname, allprop in xml root", status: 414
       end
 
-      # respond with the specific properties on the given path
-      def propfind_props(path:, depth:, shallow: false, filters: [])
-        pathprops = properties.at_path(pid: path.id, depth:, filters:)
-        response.xml_body do |xml|
-          render_prop_multistatus(xml:, pathprops:, expected: filters, shallow:)
-        end
-
-        complete 207
-      end
-
       # parse the given element to get a property filter
       def propfind_to_filter(elem)
         badname = elem.namespace.nil? && elem.name.include?(":")
         invalid! "invalid xmlns/name #{elem.name}, xmlns=''", status: 400 if badname
 
         { xmlns: elem.namespace&.href || "", xmlel: elem.name }
+      end
+
+      # respond with the specific properties on the given path
+      def propfind_response_for(path:, depth:, shallow: false, filters: [])
+        pathprops = properties.at_path(pid: path.id, depth:, filters:)
+        response.xml_body do |xml|
+          render_prop_multistatus(xml:, pathprops:, expected: filters, shallow:)
+        end
+
+        complete 207
       end
 
       # parse the property update xml doc, and yield commands to the caller
@@ -315,6 +317,8 @@ module Dav
           end
         end
       end
+
+      # --- locks
 
       # grant a lock on tha path
       def lock_grant(path:, ppath:)
@@ -354,15 +358,12 @@ module Dav
         lock = paths.lock_info(token:)
         failure! "somehow our lock doesnt exist!?" unless lock
 
-        builder = Nokogiri::XML::Builder.new do |xml|
+        response.headers.merge! "lock-token" => lock[:id].token
+        response.xml_body do |xml|
           xml["d"].prop("xmlns:d" => "DAV:") do
             render_lockdiscovery(xml:, lock:, root: request.path_info)
           end
         end
-
-        response.headers.merge! "lock-token" => lock[:id].token
-        response.headers.merge! "content-type" => "application/xml"
-        response.body = [builder.to_xml]
 
         complete status
       end
@@ -384,15 +385,12 @@ module Dav
         lock = paths.lock_info(token:)
         failure! "somehow our lock doesnt exist!?" unless lock
 
-        builder = Nokogiri::XML::Builder.new do |xml|
+        response.headers.merge! "lock-token" => lock[:id].token
+        response.xml_body do |xml|
           xml["d"].prop("xmlns:d" => "DAV:") do
             render_lockdiscovery(xml:, lock:, root: request.path_info)
           end
         end
-
-        response.headers.merge! "lock-token" => lock[:id].token
-        response.headers.merge! "content-type" => "application/xml"
-        response.body = [builder.to_xml]
 
         complete 200
       end
