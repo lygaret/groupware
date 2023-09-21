@@ -458,6 +458,9 @@ module Dav
         complete 200
       end
 
+      # ensures that the If: header and lock state of the given path makes sense.
+      # @param path [PathMethods] the path to check locks
+      # @param direct [bool] if true, doesn't consider inherited locks
       def validate_lock!(path:, direct: false)
         invalid! status: 412 unless check_ifstate(path:)
         invalid! status: 423 unless check_lock(path:, direct:)
@@ -481,28 +484,21 @@ module Dav
         return true if request.dav_ifstate.nil?
 
         request.dav_ifstate.clauses.any? do |clause|
-          path =
-            if clause.uri.nil?
-              path
-            else
-              # TODO: url normalization; we're doing the same thing elsewhere
-              uri = clause.uri.dup
-              uri.delete_prefix! request.base_url
-              uri.delete_prefix! request.script_name
-
-              # resource being nil is ok; it's part of the checking
-              # ie. a NOT rule that includes a missing path
-              paths.at_path(uri)
-            end
+          rpath = path
+          unless clause.uri.nil?
+            # a non-nil clause uri means we're checking against the path from the header
+            uri   = request.normalize_dav_path(clause.uri)
+            rpath = uri && paths.at_path(uri)
+          end
 
           clause.predicates.all? do |pred|
             case pred
             when Dav::IfState::TokenPredicate
-              pathlocks = path&.plockids&.map(&:token)
+              pathlocks = rpath&.plockids&.map(&:token)
               toggle_bool(pathlocks&.include?(pred.token), pred.inv)
 
             when Dav::IfState::EtagPredicate
-              property = path && properties.find_at_path(pid: path.id, xmlel: "getetag")
+              property = rpath && properties.find_at_path(pid: rpath.id, xmlel: "getetag")
               toggle_bool(property && (pred.etag == property[:content].to_s), pred.inv)
             end
           end

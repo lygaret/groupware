@@ -49,6 +49,17 @@ module Dav
         end
     end
 
+    # normalize a uri to a dav path, raising if the uri is pointing to an external resource
+    def normalize_dav_path(uri)
+      uri = uri.dup
+
+      internal   = uri.delete_prefix!(base_url) || uri.start_with?("/")
+      internal ||= uri.delete_prefix!(script_name) || script_name == ""
+      raise Errors::MalformedRequestError, "destination is external!" unless internal
+
+      uri
+    end
+
     # @return Integer, content length, 0 if the header is missing
     # @raise MalformedRequetError if the length can't be parsed as an integer
     def dav_content_length
@@ -84,12 +95,7 @@ module Dav
       @dav_destination ||=
         begin
           dest = get_header("HTTP_DESTINATION")
-          unless dest.nil?
-            raise Errors::MalformedRequestError, "destination is external!" unless dest.delete_prefix!(base_url)
-            raise Errors::MalformedRequestError, "destination is external!" unless dest.delete_prefix!(script_name) || script_name == ""
-          end
-
-          dest && Pathname.parse(dest)
+          dest && Pathname.parse(normalize_dav_path(dest))
         end
     end
 
