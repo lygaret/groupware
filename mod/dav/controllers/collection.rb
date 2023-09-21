@@ -132,24 +132,18 @@ module Dav
         depth = request.dav_depth
         invalid! "Depth: infinity is not supported", status: 409 if depth == :infinity
 
-        # an empty body means allprop
-        doc = request.xml_body
-        return propfind_allprop(path:, depth:, shallow: false) if doc.nil?
-
-        # otherwise, fetch the request type and branch on it
-        root = doc.at_css("d|propfind:only-child", DAV_NSDECL)
-        invalid! "invalid xml, missing propfind", status: 400 if root.nil?
-
-        allprop = root.at_css("d|allprop", DAV_NSDECL)
-        return propfind_allprop(path:, depth:, shallow: false) unless allprop.nil?
-
-        propname = root.at_css("d|propname", DAV_NSDECL)
-        return propfind_allprop(path:, depth:, propname:, shallow: true) unless propname.nil?
-
-        prop = root.at_css("d|prop", DAV_NSDECL)
-        return propfind_prop(path:, depth:, prop:) unless prop.nil?
-
-        invalid! "expected at least one of <allprop>,<propname>,<prop>", status: 400
+        # handle the command from the body
+        case propfind_command(request.xml_body)
+        in :allprop
+          propfind_props(path:, depth:)
+        in :propname
+          propfind_props(path:, depth:, shallow: true)
+        in [:prop, prop]
+          filters = prop.element_children.map { propfind_to_filter _1 }
+          propfind_props(path:, depth:, filters:)
+        else
+          invalid! "invalid xml!", status: 400
+        end
       end
 
       # PROPPATCH http (webdav) method
@@ -160,24 +154,13 @@ module Dav
 
         validate_lock!(path:)
 
-        doc       = request.xml_body
-        update_el = doc.at_css("d|propertyupdate:only-child", DAV_NSDECL)
-        invalid! "expected propertyupdate in xml root", status: 415 if update_el.nil?
-
-        paths.transaction do
-          update_el.element_children.each do |child_el|
-            pid   = path.id
-            props = child_el.css("> d|prop > *", DAV_NSDECL)
-
-            case child_el
-            in { name: "set", namespace: { href: "DAV:" }}
-              properties.set_xml_properties(pid:, user: true, props:)
-            in {name: "remove", namespace: { href: "DAV:" }}
-              properties.remove_xml_properties(pid:, user: true, props:)
-            else
-              # bad request, not sure what we're doing
-              invalid! "expected only <set> and <remove>!", status: 400
-            end
+        # handle the commands from the body; it's important that they're handled in order
+        proppatch_each_command(request.xml_body) do |command, props|
+          case command
+          when :set
+            properties.set_xml_properties(pid: path.id, user: true, props:)
+          when :remove
+            properties.remove_xml_properties(pid: path.id, user: true, props:)
           end
         end
 
@@ -252,7 +235,6 @@ module Dav
         paths.transaction do
           dest  = request.dav_destination
           pdest = paths.at_path(dest.dirname)
-
           invalid! "destination root must be a collection", status: 409 unless pdest&.collection?
 
           extant = paths.at_path(dest.to_s)
@@ -276,92 +258,62 @@ module Dav
         end
       end
 
-      # return all* properties from the given path
-      # if shallow, only return the names
-      def propfind_allprop(path:, depth:, shallow:)
-        pathprops = properties.at_path(pid: path.id, depth:)
-        builder   = Nokogiri::XML::Builder.new do |xml|
-          xml["d"].multistatus("xmlns:d" => "DAV:") do
-            pathprops.each do |fullpath, props|
-              xml["d"].response do
-                xml["d"].href fullpath
-                render_propstat(xml:, status: "200 OK", props:) do |row|
-                  render_row(xml:, row:, shallow:)
-                end
-              end
-            end
-          end
-        end
+      # given an xml doc from a propfind, parse out the command to run
+      # @param doc [Nokogiri::XML::Document] the request xml body to parse
+      # @return [Array<[Symbol, XMLElement>]] a pair of the command, and the args to the command handler
+      def propfind_command(doc)
+        return [:allprop] if doc.nil? # empty doc is an allprop command
 
-        # puts "PROPFIND ALLPROPS (depth #{depth})"
-        # puts properties
-        # puts "resp------------------"
-        # puts builder.to_xml
-        # puts "----------------------"
+        root = doc.at_css("d|propfind:only-child", DAV_NSDECL)
+        invalid! "expected propfind in xml root", status: 415 if root.nil?
 
-        response.status          = 207
-        response.body            = [builder.to_xml]
-        response["Content-Type"] = "application/xml"
-        response.finish
+        allprop = root.at_css("d|allprop", DAV_NSDECL)
+        return :allprop unless allprop.nil?
+
+        propname = root.at_css("d|propname", DAV_NSDECL)
+        return :propname unless propname.nil?
+
+        prop = root.at_css("d|prop", DAV_NSDECL)
+        return [:prop, prop] unless prop.nil?
+
+        invalid! "expected one of prop, propname, allprop in xml root", status: 414
       end
 
-      # return the specific properties on the given path
-      def propfind_prop(path:, depth:, prop:)
-        # because we have to report on properties we couldn't find,
-        # we need to maintain a set of properties we've matched, vs those expected
-        # also use this opportunity to validate for bad namespaces
-        expected = prop.element_children.map do |p|
-          badname = p.namespace.nil? && p.name.include?(":")
-          invalid! "invalid xmlns/name #{p.name}, xmlns=''", status: 400 if badname
-
-          { xmlns: p.namespace&.href || "", xmlel: p.name }
+      # respond with the specific properties on the given path
+      def propfind_props(path:, depth:, shallow: false, filters: [])
+        pathprops = properties.at_path(pid: path.id, depth:, filters:)
+        response.xml_body do |xml|
+          render_prop_multistatus(xml:, pathprops:, expected: filters, shallow:)
         end
 
-        # we can additionally use the set of expected properties to filter the db query
-        pathprops = properties.at_path(pid: path.id, depth:, filters: expected)
+        complete 207
+      end
 
-        # iterate through properties while building the xml
-        builder = Nokogiri::XML::Builder.new do |xml|
-          xml["d"].multistatus("xmlns:d" => "DAV:") do
-            pathprops.each do |fullpath, props|
-              missing = expected.dup # track missing items _per path_
+      # parse the given element to get a property filter
+      def propfind_to_filter(elem)
+        badname = elem.namespace.nil? && elem.name.include?(":")
+        invalid! "invalid xmlns/name #{elem.name}, xmlns=''", status: 400 if badname
 
-              xml["d"].response do
-                xml["d"].href fullpath
+        { xmlns: elem.namespace&.href || "", xmlel: elem.name }
+      end
 
-                # found keys
-                unless props.empty?
-                  render_propstat(xml:, status: "200 OK", props:) do |row|
-                    render_row xml:, row:, shallow: false
+      # parse the property update xml doc, and yield commands to the caller
+      def proppatch_each_command(doc)
+        update_el = doc&.at_css("d|propertyupdate:only-child", DAV_NSDECL)
+        invalid! "expected propertyupdate in xml root", status: 415 if update_el.nil?
 
-                    # track missing so we can report 404 on the others
-                    missing.reject! do |prop|
-                      row[:xmlns] == prop[:xmlns] && row[:xmlel] == prop[:xmlel]
-                    end
-                  end
-                end
+        update_el.element_children.each do |child_el|
+          props = child_el.css("> d|prop > *", DAV_NSDECL)
 
-                # data still in missing is reported 404
-                unless missing.empty?
-                  render_propstat(xml:, status: "404 Not Found", props: missing) do |prop|
-                    xml.send(prop[:xmlel], xmlns: prop[:xmlns])
-                  end
-                end
-              end
-            end
+          case child_el
+          in { name: "set", namespace: { href: "DAV:" }}
+            yield :set, props
+          in { name: "remove", namespace: { href: "DAV:" }}
+            yield :remove, props
+          else
+            invalid! "expected only <set> and <remove>!", status: 400
           end
         end
-
-        # puts "PROPFIND PROPS (depth #{depth})"
-        # puts properties
-        # puts "resp------------------"
-        # puts builder.to_xml
-        # puts "----------------------"
-
-        response.status          = 207
-        response.body            = [builder.to_xml]
-        response["Content-Type"] = "application/xml"
-        response.finish
       end
 
       # grant a lock on tha path
@@ -498,6 +450,38 @@ module Dav
 
       def toggle_bool(bool, toggle) = toggle ? !bool : bool
 
+      def render_prop_multistatus(xml:, pathprops:, expected: [], shallow:)
+        xml["d"].multistatus("xmlns:d" => "DAV:") do
+          pathprops.each do |fullpath, props|
+            xml["d"].response do
+              xml["d"].href fullpath
+
+              # track missing items _per path_
+              missing = expected.dup
+
+              # found keys
+              unless props.empty?
+                render_propstat(xml:, status: "200 OK", props:) do |row|
+                  render_proprow(xml:, row:, shallow:)
+
+                  # track missing so we can report 404 on the others
+                  missing.reject! do |prop|
+                    row[:xmlns] == prop[:xmlns] && row[:xmlel] == prop[:xmlel]
+                  end
+                end
+              end
+
+              # data still in missing is reported 404
+              unless missing.empty?
+                render_propstat(xml:, status: "404 Not Found", props: missing) do |prop|
+                  xml.send(prop[:xmlel], xmlns: prop[:xmlns])
+                end
+              end
+            end
+          end
+        end
+      end
+
       # given an xml builder, render a <DAV:propstat> block
       def render_propstat(xml:, status:, props:, &block)
         xml["d"].propstat do
@@ -509,7 +493,7 @@ module Dav
       end
 
       # given an xml builder, render a <DAV:prop> block and it's fragment children
-      def render_row(xml:, row:, shallow:)
+      def render_proprow(xml:, row:, shallow:)
         attrs   = Hash.new(JSON.parse(row[:xmlattrs]))
         content =
           if shallow
