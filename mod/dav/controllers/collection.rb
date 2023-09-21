@@ -318,6 +318,69 @@ module Dav
         end
       end
 
+      # given some props, render a multistatus propstat response
+      def render_prop_multistatus(xml:, pathprops:, expected: [], shallow:)
+        xml["d"].multistatus("xmlns:d" => "DAV:") do
+          pathprops.each do |fullpath, props|
+            xml["d"].response do
+              xml["d"].href fullpath
+
+              # track missing items _per path_
+              missing = expected.dup
+
+              # found keys
+              unless props.empty?
+                render_propstat(xml:, status: "200 OK", props:) do |row|
+                  render_proprow(xml:, row:, shallow:)
+
+                  # track missing so we can report 404 on the others
+                  missing.reject! do |prop|
+                    row[:xmlns] == prop[:xmlns] && row[:xmlel] == prop[:xmlel]
+                  end
+                end
+              end
+
+              # data still in missing is reported 404
+              unless missing.empty?
+                render_propstat(xml:, status: "404 Not Found", props: missing) do |prop|
+                  xml.send(prop[:xmlel], xmlns: prop[:xmlns])
+                end
+              end
+            end
+          end
+        end
+      end
+
+      # given an xml builder, render a <DAV:propstat> block
+      def render_propstat(xml:, status:, props:, &block)
+        xml["d"].propstat do
+          xml["d"].status "HTTP/1.1 #{status}"
+          xml["d"].prop do
+            props.each(&block)
+          end
+        end
+      end
+
+      # given an xml builder, render a <DAV:prop> block and it's fragment children
+      def render_proprow(xml:, row:, shallow:)
+        attrs   = Hash.new(JSON.parse(row[:xmlattrs]))
+        content =
+          if shallow
+            nil
+          else
+            lambda do |_|
+              xml.send(:insert, Nokogiri::XML.fragment(row[:content]))
+            end
+          end
+
+        if row[:xmlns] == "DAV:"
+          xml["d"].send(row[:xmlel], **attrs, &content)
+        else
+          attrs.merge! xmlns: row[:xmlns]
+          xml.send(row[:xmlel], **attrs, &content)
+        end
+      end
+
       # --- locks
 
       # grant a lock on tha path
@@ -446,69 +509,15 @@ module Dav
         end
       end
 
-      def toggle_bool(bool, toggle) = toggle ? !bool : bool
-
-      def render_prop_multistatus(xml:, pathprops:, expected: [], shallow:)
-        xml["d"].multistatus("xmlns:d" => "DAV:") do
-          pathprops.each do |fullpath, props|
-            xml["d"].response do
-              xml["d"].href fullpath
-
-              # track missing items _per path_
-              missing = expected.dup
-
-              # found keys
-              unless props.empty?
-                render_propstat(xml:, status: "200 OK", props:) do |row|
-                  render_proprow(xml:, row:, shallow:)
-
-                  # track missing so we can report 404 on the others
-                  missing.reject! do |prop|
-                    row[:xmlns] == prop[:xmlns] && row[:xmlel] == prop[:xmlel]
-                  end
-                end
-              end
-
-              # data still in missing is reported 404
-              unless missing.empty?
-                render_propstat(xml:, status: "404 Not Found", props: missing) do |prop|
-                  xml.send(prop[:xmlel], xmlns: prop[:xmlns])
-                end
-              end
-            end
-          end
-        end
-      end
-
-      # given an xml builder, render a <DAV:propstat> block
-      def render_propstat(xml:, status:, props:, &block)
-        xml["d"].propstat do
-          xml["d"].status "HTTP/1.1 #{status}"
-          xml["d"].prop do
-            props.each(&block)
-          end
-        end
-      end
-
-      # given an xml builder, render a <DAV:prop> block and it's fragment children
-      def render_proprow(xml:, row:, shallow:)
-        attrs   = Hash.new(JSON.parse(row[:xmlattrs]))
-        content =
-          if shallow
-            nil
-          else
-            lambda do |_|
-              xml.send(:insert, Nokogiri::XML.fragment(row[:content]))
-            end
-          end
-
-        if row[:xmlns] == "DAV:"
-          xml["d"].send(row[:xmlel], **attrs, &content)
-        else
-          attrs.merge! xmlns: row[:xmlns]
-          xml.send(row[:xmlel], **attrs, &content)
-        end
-      end
+      # possibly invert the value of the given boolean.
+      # just XOR, but makes more sense with this name in context.
+      #
+      # @example
+      #   toggle_bool(true, true) #=> false
+      #   toggle_bool(true, false) #=> true
+      #   toggle_bool(false, true) #=> true
+      #   toggle_bool(false, false) #=> false
+      def toggle_bool(bool, toggle) = toggle ^ bool
 
       # given an xml builder and a lock, render a <DAV:lockdiscovery> block
       def render_lockdiscovery(xml:, root:, lock:)
