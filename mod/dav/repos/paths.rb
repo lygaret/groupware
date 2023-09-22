@@ -170,15 +170,12 @@ module Dav
       private
 
       def paths      = connection[:paths]
+      def locks      = connection[:locks]
+      def locks_live = connection[:locks_live]
 
       def clone_tree_sql
         @clone_tree_sql ||= File.read File.join(__dir__, "./queries/clone_tree.sql")
       end
-
-      def locks      = connection[:locks]
-      def locks_live = connection[:locks_live]
-
-      def toggle_bool(bool, toggle) = toggle ? !bool : bool
 
     end
   end
