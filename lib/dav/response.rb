@@ -9,11 +9,21 @@ module Dav
   # for bodies.
   class Response < Rack::Response
 
+    # respond with xml body, built from a nokogiri builder,
+    # and appropriately set the content type header.
+    #
+    # @yield [Nokogiri::XML::Builder] the builder for the response
     def xml_body(&)
-      builder = Nokogiri::XML::Builder.new(&)
-
-      self.body            = [builder.to_xml]
       self["Content-Type"] = "application/xml"
+
+      # TODO: builder _outside_ the response proc means that we run
+      # the block immediately; would it better if the block were run
+      # conditionally? is that unexpected?
+
+      builder   = Nokogiri::XML::Builder.new(&)
+      self.body = proc do |out|
+        builder.doc.write_to(out, indent: 2)
+      end
     end
 
   end

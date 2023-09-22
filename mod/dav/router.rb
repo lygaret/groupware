@@ -78,7 +78,8 @@ module Dav
         body = []
       end
 
-      body = [body] unless body.respond_to? :each
+      body = [body] unless body.respond_to?(:each) || body.respond_to?(:call)
+
       [status, headers, body]
     end
 
