@@ -4,6 +4,7 @@ module Dav
 
   # Represents a path, and gives us easy access to the name and dirname
   Pathname = Data.define(:dirname, :basename) do
+    # @return [Pathname] the given path parsed into a path name
     def self.parse(path)
       parts    = path.split("/")
       basename = parts.pop
