@@ -473,7 +473,7 @@ module Dav
         return true unless lids
 
         # good if there's any intersection of submitted and current
-        request.dav_submitted_tokens.intersect? lids.map(&:token)
+        request.dav_submitted_tokens.intersect? lids
       end
 
       # validate the ifstate struct, using the current path as context for untagged clauses
@@ -494,8 +494,7 @@ module Dav
           clause.predicates.all? do |pred|
             case pred
             when Dav::IfState::TokenPredicate
-              pathlocks = rpath&.plockids&.map(&:token)
-              toggle_bool(pathlocks&.include?(pred.token), pred.inv)
+              toggle_bool(rpath&.plockids&.include?(pred.token), pred.inv)
 
             when Dav::IfState::EtagPredicate
               property = rpath && properties.find_at_path(pid: rpath.id, xmlel: "getetag")
@@ -513,7 +512,9 @@ module Dav
       #   toggle_bool(true, false) #=> true
       #   toggle_bool(false, true) #=> true
       #   toggle_bool(false, false) #=> false
-      def toggle_bool(bool, toggle) = toggle ^ bool
+      def toggle_bool(bool, toggle)
+        !toggle ^ !bool # coerce to bool first, numbers are xor'd bitwise, !x^!y == x^y
+      end
 
       # given an xml builder and a lock, render a <DAV:lockdiscovery> block
       def render_lockdiscovery(xml:, root:, lock:)

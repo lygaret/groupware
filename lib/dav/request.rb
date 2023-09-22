@@ -5,6 +5,7 @@ require "rack/mime"
 
 require "dav/errors"
 require "dav/ifstate"
+require "dav/lockid"
 require "dav/pathname"
 require "utils/md5_reader"
 
@@ -14,7 +15,10 @@ module Dav
   # path, Destination header, If header handling, etc.
   class Request < Rack::Request
 
+    # valid DAV depth header values
     DAV_DEPTHS      = %w[infinity 0 1].freeze
+
+    # max supported timeout, in seconds
     DAV_MAX_TIMEOUT = 30 * 24 * 60 * 60 * 60 # 30 days
 
     # @return [Pathname] the pathname recovered from the rack environment
@@ -123,17 +127,22 @@ module Dav
       end.min
     end
 
+    # @return [IfState] if state, parsed from the HTTP_IF header
     def dav_ifstate
       @dav_ifstate ||= IfState.parse get_header("HTTP_IF")
     end
 
+    # @return [LockId] the lock token submitted in the LOCK_TOKEN header
     def dav_locktoken
       @dav_locktoken ||= begin
         header = get_header("HTTP_LOCK_TOKEN")
-        header&.sub(/<([^>]+)>/, "\\1")
+        token  = header&.sub(/<([^>]+)>/, "\\1")
+
+        token && LockId.from_token(token)
       end
     end
 
+    # @return [Array<LockId>] the set of _implicitly_ submitted lock tokens
     def dav_submitted_tokens
       iftokens  = dav_ifstate&.submitted_tokens&.dup || []
       iftokens << dav_locktoken if dav_locktoken

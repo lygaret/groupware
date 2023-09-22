@@ -2,6 +2,7 @@
 
 require "parslet"
 
+require "dav/lockid"
 require "dav/errors"
 
 module Dav
@@ -80,7 +81,7 @@ module Dav
     # simple AST transformer for If: header
     class Transform < Parslet::Transform
 
-      rule(not: simple(:inv), token: simple(:token)) { IfState::TokenPredicate.new(!inv.nil?, token.to_s) }
+      rule(not: simple(:inv), token: simple(:token)) { IfState::TokenPredicate.new(!inv.nil?, LockId.from_token(token.to_s)) }
       rule(not: simple(:inv), etag: simple(:etag))   { IfState::EtagPredicate.new(!inv.nil?, etag.to_s) }
 
       # without rtag, it resolves to the current request uri
