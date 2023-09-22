@@ -18,7 +18,7 @@ module Dav
     end
 
     # @return [String] the lock token representing this id
-    def token = @token ||= "urn:x-groupware:#{lid}?=lock"
+    def token = "urn:x-groupware:#{lid}?=lock"
   end
 
 end
