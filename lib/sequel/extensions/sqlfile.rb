@@ -18,7 +18,7 @@ module Sequel
 
       # run the first file found with the given relative path in {Sequel.sqlfile_roots}
       def run_file(path)
-        paths = Sequel.sqlfile_roots.map { File.expand_path(path, _0) }
+        paths = Sequel.sqlfile_roots.map { File.expand_path(path, _1) }
         realp = paths.find { File.exist? _1 }
         raise ArgumentError, "nothing at path: #{path}!" unless realp
 
