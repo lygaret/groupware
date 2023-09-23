@@ -20,16 +20,9 @@ Sequel.migration do
       -- should be a unique, but it's hard to guarantee
       CREATE INDEX locks_pid_idx          ON locks(pid);
       CREATE INDEX locks_submitted_ts_idx ON locks(refreshed_at + timeout);
-
-      CREATE VIEW locks_live (id, pid, deep, type, scope, owner, timeout, refreshed_at, created_at, expires_at, remaining)
-      AS
-        SELECT
-          locks.*,
-          (refreshed_at + timeout) as expires_at,
-          (refreshed_at + timeout) - unixepoch() as remaining
-        FROM locks
-        WHERE remaining > 0;
     SQL
+
+    run_file "./views/locks_live_01.sql"
   end
 
   down do
