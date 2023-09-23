@@ -1,4 +1,4 @@
--- Tue, 12 Sep 2023 15:38:29 GMT -- Migration Version 60
+-- Sat, 23 Sep 2023 07:59:50 GMT -- Migration Version 70
 
 CREATE TABLE `schema_info` (`version` integer DEFAULT (0) NOT NULL);
 
@@ -8,10 +8,12 @@ CREATE TABLE paths (
 
   , path  TEXT NOT NULL  -- the path segment name
   , ctype TEXT NULL      -- controller type
-);
+, `oid` text NULL REFERENCES `owners`(`id`) ON DELETE CASCADE);
 CREATE INDEX paths_id_idx      ON paths(id);
 CREATE INDEX paths_pid_idx     ON paths(pid);
 CREATE UNIQUE INDEX paths_pidpath_idx ON paths(pid, path);
+
+CREATE TABLE sqlite_sequence(name,seq);
 
 CREATE TABLE resources (
     id         TEXT NOT NULL PRIMARY KEY
@@ -49,8 +51,6 @@ CREATE UNIQUE INDEX properties_riduserfqn_idx on properties (rid, user, xmlns, x
 CREATE INDEX properties_pid_idx on properties (pid);
 CREATE UNIQUE INDEX properties_piduserfqn_idx on properties (pid, user, xmlns, xmlel);
 
-CREATE TABLE sqlite_sequence(name,seq);
-
 CREATE TABLE locks (
     id           TEXT NOT NULL PRIMARY KEY
   , pid          TEXT REFERENCES paths(id) ON DELETE CASCADE
@@ -76,11 +76,15 @@ AS
   FROM locks
   WHERE remaining > 0;
 
-CREATE VIEW paths_extra (id, pid, path, fullpath, depth, ctype, pctype, lockids, plockids, lockdeeps) AS
-  WITH RECURSIVE parents (id, pid, path, fullpath, depth, ctype, pctype, lockid, plockid, lockdeep) AS (
+CREATE TABLE `owners` (`id` text NOT NULL PRIMARY KEY, `name` text);
+
+CREATE VIEW paths_extra (id, pid, oid, poid, path, fullpath, depth, ctype, pctype, lockids, plockids, lockdeeps) AS
+  WITH RECURSIVE parents (id, pid, oid, poid, path, fullpath, depth, ctype, pctype, lockid, plockid, lockdeep) AS (
     SELECT
         paths.id
       , paths.pid
+      , paths.oid
+      , paths.oid
       , paths.path
       , '/' || paths.path
       , 0
@@ -96,6 +100,8 @@ CREATE VIEW paths_extra (id, pid, path, fullpath, depth, ctype, pctype, lockids,
     SELECT
         paths.id
       , paths.pid
+      , paths.oid
+      , coalesce(paths.oid, parents.oid)
       , paths.path
       , parents.fullpath || '/' || paths.path
       , parents.depth + 1
@@ -111,6 +117,8 @@ CREATE VIEW paths_extra (id, pid, path, fullpath, depth, ctype, pctype, lockids,
   SELECT
       parents.id
     , parents.pid
+    , parents.oid
+    , parents.poid
     , parents.path
     , parents.fullpath
     , parents.depth
