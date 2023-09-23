@@ -5,13 +5,6 @@ GIT
     string-inquirer (0.0.1)
 
 GIT
-  remote: https://github.com/lygaret/sqlite3-ext-closure.git
-  revision: f4cf78a9fab6ed93232ba805b5d0849d5f10e57e
-  specs:
-    sqlite3-ext-closure (0.1.4)
-      sqlite3 (~> 1)
-
-GIT
   remote: https://github.com/rack/rack.git
   revision: 64610db2d2e7e910c4d3e17874dc316ed3eb227a
   branch: main
@@ -180,7 +173,6 @@ DEPENDENCIES
   rubocop-sequel (~> 0.3)
   sequel (~> 5.71)
   sqlite3 (~> 1.6)
-  sqlite3-ext-closure (~> 0.1.1)!
   string-inquirer (~> 0)!
   yard (~> 0.9.34)
   yard-junk (~> 0.0.9)

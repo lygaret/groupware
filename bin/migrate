@@ -2,8 +2,6 @@
 # frozen_string_literal: true
 
 require_relative "../config/system"
-System::Container.finalize!
-
 require "optparse"
 
 options = {}
@@ -22,10 +20,22 @@ end.parse!
 # because we need specific database setup,
 # we can't use the `sequel -m` cli for migrations
 
-connection = System::Container["db.connection"]
-migrations = System::Container.root.join "config/migrations"
+System::Container.prepare :database
+
+# customize sequel for our migrations
+# we don't include all these extensions in the normal provider for least-privs reasons
 
 Sequel.extension :migration
+Sequel.extension :sqlfile
+migrations = System::Container.root.join "config/migrations"
+
+Sequel::Database.extension :sqlfile
+Sequel.sqlfile_roots << migrations
+
+# now back to your regularly scheduled programming
+
+System::Container.start :database
+connection = System::Container["db.connection"]
 
 mopts    = { allow_missing_migration_files: true, use_transactions: true }
 migrator = Sequel::IntegerMigrator.new(connection, migrations, target: options[:target], **mopts)

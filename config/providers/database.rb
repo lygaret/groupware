@@ -7,7 +7,6 @@ System::Container.register_provider(:database) do
   prepare do
     require "sequel"
     require "sqlite3"
-    require "sqlite3/ext/closure"
   end
 
   start do

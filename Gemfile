@@ -15,7 +15,6 @@ gem "string-inquirer", "~> 0", git: "https://gist.github.com/117441fc5236de9f7d5
 
 gem "sequel", "~> 5.71"
 gem "sqlite3", "~> 1.6"
-gem "sqlite3-ext-closure", "~> 0.1.1", github: "lygaret/sqlite3-ext-closure"
 
 gem "dry-events", "~> 1.0"
 gem "dry-monitor", "~> 1.0"
