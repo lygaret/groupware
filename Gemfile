@@ -32,7 +32,7 @@ group :development, :test do
   gem "debug", "~> 1"
   gem "rake", "~> 13.0"
 
-  gem "rubocop", "~> 1.56"
+  gem "rubocop", "~> 1.57"
   gem "rubocop-rake", "~> 0.6"
   gem "rubocop-rspec", "~> 2.24"
   gem "rubocop-sequel", "~> 0.3"
