@@ -34,7 +34,7 @@ group :development, :test do
 
   gem "rubocop", "~> 1.56"
   gem "rubocop-rake", "~> 0.6"
-  gem "rubocop-rspec", "~> 2.24"
+  gem "rubocop-rspec", "~> 2.25"
   gem "rubocop-sequel", "~> 0.3"
 
   gem "redcarpet", "~> 3.6"
