@@ -13,7 +13,7 @@ gem "nokogiri", "~> 1.15"
 gem "parslet", "~> 2.0"
 gem "string-inquirer", "~> 0", git: "https://gist.github.com/117441fc5236de9f7d54b76894d69dec.git"
 
-gem "sequel", "~> 5.71"
+gem "sequel", "~> 5.74"
 gem "sqlite3", "~> 1.6"
 
 gem "dry-events", "~> 1.0"
