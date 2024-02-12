@@ -145,7 +145,7 @@ GEM
       backports (>= 3.18)
       rainbow
       yard
-    zeitwerk (2.6.11)
+    zeitwerk (2.6.13)
 
 PLATFORMS
   x86_64-linux
