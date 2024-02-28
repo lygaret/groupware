@@ -140,7 +140,7 @@ GEM
     stringio (3.0.8)
     unicode-display_width (2.4.2)
     webrick (1.8.1)
-    yard (0.9.34)
+    yard (0.9.35)
     yard-junk (0.0.9)
       backports (>= 3.18)
       rainbow
@@ -174,7 +174,7 @@ DEPENDENCIES
   sequel (~> 5.71)
   sqlite3 (~> 1.6)
   string-inquirer (~> 0)!
-  yard (~> 0.9.34)
+  yard (~> 0.9.35)
   yard-junk (~> 0.0.9)
   zeitwerk (~> 2.6)
 

@@ -38,6 +38,6 @@ group :development, :test do
   gem "rubocop-sequel", "~> 0.3"
 
   gem "redcarpet", "~> 3.6"
-  gem "yard", "~> 0.9.34"
+  gem "yard", "~> 0.9.35"
   gem "yard-junk", "~> 0.0.9"
 end
