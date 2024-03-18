@@ -9,7 +9,7 @@ gem "ougai", "~> 2.0"
 gem "rack", "~> 3.0", github: "rack/rack", branch: "main"
 gem "rackup", "~> 2"
 
-gem "nokogiri", "~> 1.15"
+gem "nokogiri", "~> 1.16"
 gem "parslet", "~> 2.0"
 gem "string-inquirer", "~> 0", git: "https://gist.github.com/117441fc5236de9f7d54b76894d69dec.git"
 
